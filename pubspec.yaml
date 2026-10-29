@@ -1,0 +1,24 @@
+name: daymark
+description: Offline teacher attendance and notes for Windows.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: ^3.13.3
+dependencies:
+  flutter:
+    sdk: flutter
+  drift: ^2.35.0
+  sqlite3: ^3.5.1
+  path_provider: ^2.1.6
+  path: ^1.9.1
+  crypto: ^3.0.7
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
