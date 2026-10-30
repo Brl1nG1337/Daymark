@@ -8,6 +8,78 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('day notes persist for past and future dates', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await DaymarkStore.inMemory();
+    addTearDown(store.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: daymarkTheme(),
+        home: DaymarkApp(store: store, initialDate: DateTime(2026, 12, 31)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Future<void> addNote(String text) async {
+      await tester.tap(find.byTooltip('Tagesnotiz hinzufügen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextFormField, 'Notiz'), text);
+      await tester.tap(find.text('Speichern'));
+      await tester.pumpAndSettle();
+    }
+
+    await addNote('Jahresabschluss vorbereiten');
+    expect(
+      (await store.dayNotes('2026-12-31')).single['body'],
+      'Jahresabschluss vorbereiten',
+    );
+    await tester.tap(find.byTooltip('Nächster Tag'));
+    await tester.pumpAndSettle();
+    expect(find.text('Jahresabschluss vorbereiten'), findsNothing);
+    await addNote('Neujahrsplanung');
+    expect(
+      (await store.dayNotes('2027-01-01')).single['body'],
+      'Neujahrsplanung',
+    );
+    await tester.tap(find.byTooltip('Notizaktionen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bearbeiten').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Notiz'),
+      'Neujahrsplanung aktualisiert',
+    );
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(
+      (await store.dayNotes('2027-01-01')).single['body'],
+      'Neujahrsplanung aktualisiert',
+    );
+    await tester.tap(find.byTooltip('Notizaktionen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Löschen').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Tagesnotiz löschen?'), findsOneWidget);
+    await tester.tap(find.text('Löschen').last);
+    await tester.pumpAndSettle();
+    expect(await store.dayNotes('2027-01-01'), isEmpty);
+    await tester.tap(find.byTooltip('Voriger Tag'));
+    await tester.pumpAndSettle();
+    expect(find.text('Jahresabschluss vorbereiten'), findsOneWidget);
+    await tester.tap(find.byTooltip('Voriger Tag'));
+    await tester.pumpAndSettle();
+    await addNote('Alte Unterlagen sortieren');
+    expect(
+      (await store.dayNotes('2026-12-30')).single['body'],
+      'Alte Unterlagen sortieren',
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   test('current lesson uses a half-open interval and explicit completion', () {
     final lesson = TodayLesson(
       slotId: 1,
@@ -66,8 +138,6 @@ void main() {
       expect(data.lessons.single.lessonId, id);
       expect(data.lessons.single.completed, isTrue);
       expect(data.reason, 'Pädagogischer Tag');
-      expect(data.tomorrow.single.subject, 'Deutsch');
-      expect(data.tomorrow.single.startsAt, isNull);
     },
   );
 
@@ -91,11 +161,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Donnerstag, 31. Dezember'), findsOneWidget);
-    expect(find.text('Freitag, 1. Januar'), findsOneWidget);
+    expect(find.text('Tagesnotizen'), findsOneWidget);
     await tester.tap(find.byTooltip('Nächster Tag'));
     await tester.pumpAndSettle();
     expect(find.text('Freitag, 1. Januar'), findsOneWidget);
-    expect(find.text('Samstag, 2. Januar'), findsOneWidget);
     expect(find.text('2. Stunde'), findsOneWidget);
     await tester.tap(find.text('Freitag, 1. Januar'));
     await tester.pumpAndSettle();
@@ -137,7 +206,11 @@ void main() {
         body: TodayView(
           date: date,
           now: DateTime(2026, 5, 12, 10),
-          schedule: TodaySchedule(lessons: [lesson], tomorrow: []),
+          schedule: TodaySchedule(lessons: [lesson]),
+          notesPanel: const SizedBox(
+            height: 300,
+            child: Text('Noch keine Notizen.'),
+          ),
           error: error,
           onPrevious: () {},
           onNext: () {},
@@ -152,7 +225,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('3. Stunde'));
     expect(opened, same(lesson));
-    await tester.scrollUntilVisible(find.text('Keine Stunde geplant.'), 150);
+    await tester.scrollUntilVisible(find.text('Noch keine Notizen.'), 150);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(view(error: 'Laden fehlgeschlagen'));
     await tester.tap(find.text('Erneut versuchen'));

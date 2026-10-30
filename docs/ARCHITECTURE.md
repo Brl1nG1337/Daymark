@@ -4,6 +4,11 @@ Daymark ist eine lokale Flutter-Desktop-App. Produktionsziel ist Windows;
 Linux dient zusätzlich der Entwicklung. Die Anwendung benötigt zur Laufzeit
 keinen Netzwerkzugriff.
 
+Der Windows-Runner begrenzt das äußere Fenster über `WM_GETMINMAXINFO` auf
+900 × 600 bis 1600 × 1000 logische Pixel. Die Grenzen werden mit der aktuellen
+Fenster-DPI in physische Pixel umgerechnet. Das Startfenster bleibt 1280 × 720.
+Die Linux-Entwicklungsoberfläche hat diese nativen Windows-Grenzen nicht.
+
 ## Schichten und Abhängigkeiten
 
 - `lib/domain/`: fachliche Modelle und Regeln, unabhängig von Flutter und SQL.
@@ -11,29 +16,37 @@ keinen Netzwerkzugriff.
 - `lib/data/`: Persistenz, native Integrationen und Adapter.
   `DaymarkStore` verwaltet Drift/SQLite; `TodayRepository` wandelt dessen
   Datenbankzeilen in `TodaySchedule` und `TodayLesson` um.
+  `DayNotesRepository` wandelt datumsgebundene Notizen in `DayNote` um.
 - `lib/ui/`: Darstellung und Benutzerinteraktion.
   `TodayPage` besitzt Ladezustand, ausgewähltes Datum und Uhr-Timer.
   `TodayView` und seine Zeilen erhalten ausschließlich Daten und Callbacks.
+  `ui/day_notes/` besitzt den unabhängigen Lade- und Bearbeitungszustand der
+  Tagesnotizen für das ausgewählte Datum.
   `DaymarkSidebar` und `theme/daymark_theme.dart` definieren den gemeinsamen Rahmen.
+  `ui/classes/`, `ui/planning/` und `ui/settings/` kapseln die weiteren
+  Mockup-Screens. `ui/lesson_detail/lesson_detail_page.dart` kapselt den Stundendetail-Screen
+  und wandelt die noch Map-basierten Store-Ergebnisse an seiner Grenze in
+  private, typisierte Präsentationsdaten um. Schreibaktionen sperren
+  parallele Eingaben; Bearbeitungen werden bei Wechseln auf ungespeicherte
+  Änderungen geprüft.
 - `lib/main.dart`: Einstieg, Passwortdialog und Lebenszyklus der Datenbank.
 
 Abhängigkeitsrichtung: UI → Data → Domain; Domain importiert weder UI noch Data.
-SQL und Datenbank-Maps gehören nicht in neue Darstellungswidgets. Bestehende
-Stundendetails erhalten ihre Map über eine explizite Übergabe im App-Rahmen.
+SQL und Datenbank-Maps gehören nicht in neue Darstellungswidgets. Der App-Rahmen übergibt typisierte Stunden an den Detail-Screen.
 
 ## Persistenz
 
-`DaymarkStore` verwendet Drift mit explizitem SQL, Schema-Version 2 und
+`DaymarkStore` verwendet Drift mit explizitem SQL, Schema-Version 4 und
 SQLite3MultipleCiphers. Das Passwort entsperrt die Datenbank im lokalen
 App-Support-Verzeichnis. Es gibt keine Passwortwiederherstellung.
 Schreibvorgänge mit mehreren zusammengehörigen Schritten sind transaktional.
 SQL-Werte werden parametrisiert. Schemaänderungen müssen bestehende Dateien
 weiter öffnen können; `CREATE TABLE IF NOT EXISTS` allein ist keine Migration.
 
-Der Übergang von Drift-`user_version` 1 auf 2 besitzt eine explizite,
-transaktionale Migration. Sie ergänzt fehlende Stundenfelder und erhält
-bereits vorhandene Felder und Inhalte. Das gilt auch für ältere Dateien,
-deren `app_meta.version` bereits 2 meldet, während `user_version` noch 1 ist.
+Migrationen von Drift-`user_version` 1, 2 und 3 auf 4 laufen transaktional.
+Fehlende Stundenfelder, die Einstellungstabelle und `day_notes` werden ergänzt; vorhandene
+Inhalte bleiben erhalten. Dies gilt auch für ältere Dateien, deren
+`app_meta.version` bereits 2 meldet, während `user_version` noch 1 ist.
 Verschlüsselte Dateitests prüfen beide Ausgangszustände und erneutes Öffnen.
 Die bisherige Sammelmeldung beim Öffnen unterscheidet technische Fehler
 weiterhin nicht von einem falschen Passwort.
@@ -52,9 +65,21 @@ UI-Zugriff `mounted` prüfen. Fehlerzustände müssen sichtbar und wiederholbar 
 
 ## Bestehende technische Schulden
 
-`lib/ui/daymark_app.dart` bündelt weiterhin Klassen, Planung, freie Tage,
-Stundendetails und Dialoge. `DaymarkStore` liefert für diese Bereiche noch
-Maps. Diese Bereiche bei ihrer jeweiligen Überarbeitung schrittweise in
-Features und typisierte Adapter zerlegen. Die Heute-Umsetzung ist der erste
-Schritt; das Gesamtprojekt ist damit noch nicht vollständig umstrukturiert.
-Neue Features dürfen die große UI-Datei nicht weiter vergrößern.
+`lib/ui/daymark_app.dart` enthält vor allem Navigation und einen älteren
+Texteingabedialog. `DaymarkStore` liefert für weitere Abfragen noch Maps; neue
+Feature-Grenzen wandeln sie in typisierte Präsentationsdaten um. Eine gemeinsame
+getypte Repository-Schicht für alle Features steht noch aus.
+
+Schema-Version 4 ergänzt `day_notes`; Version 3 ergänzte `app_settings`.
+Bearbeitungen bereits verwendeter
+Stundenplanplätze legen eine neue gültige Version an, damit historische
+Stundenzeiten erhalten bleiben. Backup-Export kopiert
+nach einem SQLite-Checkpoint die verschlüsselte Datenbank. Ein Import prüft
+Passwort und Integrität vor dem Ersetzen und behält die vorherige Datei als
+verschlüsselte `.before-import`-Kopie bis zur Löschung der App-Daten.
+Passwortwechsel nutzt SQLite3MultipleCiphers `rekey` und prüft den neuen
+Schlüssel anschließend.
+
+Die Einstellungen zeigen eine zentrale Liste; `ui/settings/free_days_dialog.dart`
+verwaltet eigene schulfreie Tage über den bestehenden Store. Das Linux-Fenster
+lädt sein Icon aus dem Flutter-Asset-Bundle; Windows verwendet die ICO-Ressource.

@@ -26,6 +26,13 @@ constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
   L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
 
+// Outer window bounds in logical pixels. Keep the minimum wide enough for the
+// compact sidebar and the responsive content layouts.
+constexpr int kMinWindowWidth = 900;
+constexpr int kMinWindowHeight = 600;
+constexpr int kMaxWindowWidth = 1600;
+constexpr int kMaxWindowHeight = 1000;
+
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
@@ -179,6 +186,22 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_GETMINMAXINFO: {
+      auto* bounds = reinterpret_cast<MINMAXINFO*>(lparam);
+      const UINT dpi = GetDpiForWindow(hwnd);
+      bounds->ptMinTrackSize.x = MulDiv(kMinWindowWidth, dpi, 96);
+      bounds->ptMinTrackSize.y = MulDiv(kMinWindowHeight, dpi, 96);
+      bounds->ptMaxTrackSize.x = MulDiv(kMaxWindowWidth, dpi, 96);
+      bounds->ptMaxTrackSize.y = MulDiv(kMaxWindowHeight, dpi, 96);
+      // Preserve Windows' smaller maximize size on laptop displays.
+      if (bounds->ptMaxSize.x > bounds->ptMaxTrackSize.x) {
+        bounds->ptMaxSize.x = bounds->ptMaxTrackSize.x;
+      }
+      if (bounds->ptMaxSize.y > bounds->ptMaxTrackSize.y) {
+        bounds->ptMaxSize.y = bounds->ptMaxTrackSize.y;
+      }
+      return 0;
+    }
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();

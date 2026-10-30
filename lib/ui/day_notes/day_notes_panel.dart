@@ -1,0 +1,244 @@
+import 'package:flutter/material.dart';
+
+import '../../data/day_notes_repository.dart';
+import '../../data/daymark_store.dart';
+import '../../domain/day_note.dart';
+import '../theme/daymark_theme.dart';
+
+class DayNotesPanel extends StatefulWidget {
+  const DayNotesPanel({super.key, required this.store, required this.date});
+
+  final DaymarkStore store;
+  final DateTime date;
+
+  @override
+  State<DayNotesPanel> createState() => _DayNotesPanelState();
+}
+
+class _DayNotesPanelState extends State<DayNotesPanel> {
+  late Future<List<DayNote>> _notes = _repository.forDay(widget.date);
+  bool _saving = false;
+
+  DayNotesRepository get _repository => DayNotesRepository(widget.store);
+
+  void _reload() => setState(() => _notes = _repository.forDay(widget.date));
+
+  Future<void> _edit([DayNote? note]) async {
+    var text = note?.body ?? '';
+    final body = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          note == null ? 'Tagesnotiz hinzufügen' : 'Tagesnotiz bearbeiten',
+        ),
+        content: SizedBox(
+          width: 440,
+          child: TextFormField(
+            initialValue: text,
+            onChanged: (value) => text = value,
+            autofocus: true,
+            minLines: 4,
+            maxLines: 8,
+            decoration: const InputDecoration(
+              labelText: 'Notiz',
+              hintText: 'Was ist an diesem Tag wichtig?',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, text.trim()),
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+    if (body == null || !mounted) return;
+    if (body.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bitte eine Notiz eingeben.')),
+      );
+      return;
+    }
+    await _run(
+      () => note == null
+          ? _repository.add(widget.date, body)
+          : _repository.update(note, body),
+    );
+  }
+
+  Future<void> _delete(DayNote note) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tagesnotiz löschen?'),
+        content: const Text('Die Notiz wird dauerhaft entfernt.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _run(() => _repository.delete(note));
+    }
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await action();
+      if (mounted) _reload();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Tagesnotiz konnte nicht gespeichert werden: $error'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: DaymarkColors.surface,
+      border: Border.all(color: DaymarkColors.border),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 16, 16),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Tagesnotizen',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                onPressed: _saving ? null : _edit,
+                icon: const Icon(Icons.add),
+                tooltip: 'Tagesnotiz hinzufügen',
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, indent: 22, endIndent: 22),
+        Expanded(
+          child: FutureBuilder<List<DayNote>>(
+            future: _notes,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: TextButton(
+                    onPressed: _reload,
+                    child: const Text(
+                      'Notizen konnten nicht geladen werden · Wiederholen',
+                    ),
+                  ),
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final notes = snapshot.data!;
+              if (notes.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.sticky_note_2_outlined,
+                          size: 38,
+                          color: DaymarkColors.muted,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Noch keine Notizen für diesen Tag.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: DaymarkColors.muted),
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: _saving ? null : _edit,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Notiz hinzufügen'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.all(18),
+                itemCount: notes.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final note = notes[index];
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: DaymarkColors.background,
+                      border: Border.all(color: DaymarkColors.border),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 9),
+                              child: Text(note.body),
+                            ),
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Notizaktionen',
+                            enabled: !_saving,
+                            onSelected: (action) =>
+                                action == 'edit' ? _edit(note) : _delete(note),
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Bearbeiten'),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: Text('Löschen'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    ),
+  );
+}

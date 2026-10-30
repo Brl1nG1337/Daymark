@@ -47,18 +47,6 @@ Widget todayDesktopPreview() {
                       completed: i < 2,
                     ),
                 ],
-                tomorrow: [
-                  for (var i = 0; i < 2; i++)
-                    TodayLesson(
-                      slotId: i,
-                      classId: i,
-                      className: i == 0 ? '8b' : '7b',
-                      subject: i == 0 ? 'Mathematik' : 'Englisch',
-                      period: i + 1,
-                      day: calendarDay(date, 1),
-                      startTime: times[i],
-                    ),
-                ],
               ),
               onPrevious: _ignore,
               onNext: _ignore,
@@ -66,6 +54,32 @@ Widget todayDesktopPreview() {
               onPickDate: _ignore,
               onRetry: _ignore,
               onOpenLesson: _ignoreLesson,
+              notesPanel: Container(
+                decoration: BoxDecoration(
+                  color: DaymarkColors.surface,
+                  border: Border.all(color: DaymarkColors.border),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Tagesnotizen',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Divider(height: 32),
+                      Text('Elternabend vorbereiten'),
+                      SizedBox(height: 20),
+                      Text('Material für die nächste Stunde zusammenstellen'),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ],

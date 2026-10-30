@@ -4,13 +4,17 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 String dayKey(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 class DaymarkStore {
-  DaymarkStore._(this.db);
+  DaymarkStore._(this.db, [this._file]);
   final DaymarkDatabase db;
+  final File? _file;
+  bool _closed = false;
+  bool get isClosed => _closed;
 
   static Future<DaymarkStore> inMemory({DaymarkDatabase? database}) async {
     final store = DaymarkStore._(
@@ -30,6 +34,11 @@ class DaymarkStore {
     final dir = await getApplicationSupportDirectory();
     await dir.create(recursive: true);
     final file = File(p.join(dir.path, 'daymark.sqlite'));
+    return openFile(file, password);
+  }
+
+  static Future<DaymarkStore> openFile(File file, String password) async {
+    await file.parent.create(recursive: true);
     final escaped = password.replaceAll("'", "''");
     final executor = NativeDatabase.createInBackground(
       file,
@@ -38,7 +47,7 @@ class DaymarkStore {
         raw.execute('PRAGMA foreign_keys = ON');
       },
     );
-    final store = DaymarkStore._(DaymarkDatabase(executor));
+    final store = DaymarkStore._(DaymarkDatabase(executor), file);
     try {
       await store.db.customStatement(
         'CREATE TABLE IF NOT EXISTS app_meta (id INTEGER PRIMARY KEY, version INTEGER NOT NULL)',
@@ -66,8 +75,11 @@ class DaymarkStore {
       'CREATE TABLE IF NOT EXISTS lessons (id INTEGER PRIMARY KEY, slot_id INTEGER REFERENCES slots(id), class_id INTEGER NOT NULL REFERENCES classes(id), subject TEXT NOT NULL, period INTEGER NOT NULL, day TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, UNIQUE(slot_id, day))',
       'CREATE TABLE IF NOT EXISTS attendance (lesson_id INTEGER NOT NULL REFERENCES lessons(id), student_id INTEGER NOT NULL REFERENCES students(id), status TEXT NOT NULL DEFAULT \'present\', PRIMARY KEY(lesson_id, student_id))',
       'CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, lesson_id INTEGER NOT NULL REFERENCES lessons(id), student_id INTEGER NOT NULL REFERENCES students(id), body TEXT NOT NULL, created_at TEXT NOT NULL)',
+      'CREATE TABLE IF NOT EXISTS day_notes (id INTEGER PRIMARY KEY, day TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL)',
+      'CREATE INDEX IF NOT EXISTS idx_day_notes_day ON day_notes(day, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_lessons_day ON lessons(day)',
       'CREATE INDEX IF NOT EXISTS idx_notes_student ON notes(student_id)',
+      'CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
     ]) {
       await db.customStatement(sql);
     }
@@ -79,7 +91,7 @@ class DaymarkStore {
         await db.customStatement('ALTER TABLE lessons ADD COLUMN $column TEXT');
       }
     }
-    await db.customStatement('UPDATE app_meta SET version=2 WHERE id=1');
+    await db.customStatement('UPDATE app_meta SET version=4 WHERE id=1');
   }
 
   Future<List<Map<String, Object?>>> rows(
@@ -94,6 +106,20 @@ class DaymarkStore {
 
   Future<void> addClass(String name) async =>
       db.customStatement('INSERT INTO classes(name) VALUES (?)', [name.trim()]);
+  Future<List<Map<String, Object?>>> dayNotes(String day) => rows(
+    'SELECT id, day, body, created_at FROM day_notes WHERE day=? ORDER BY created_at DESC, id DESC',
+    [day],
+  );
+  Future<void> addDayNote(String day, String body) => db.customStatement(
+    'INSERT INTO day_notes(day, body, created_at) VALUES (?, ?, ?)',
+    [day, body.trim(), DateTime.now().toUtc().toIso8601String()],
+  );
+  Future<void> updateDayNote(int id, String body) => db.customStatement(
+    'UPDATE day_notes SET body=? WHERE id=?',
+    [body.trim(), id],
+  );
+  Future<void> deleteDayNote(int id) =>
+      db.customStatement('DELETE FROM day_notes WHERE id=?', [id]);
   Future<void> addStudent(int classId, String first, String last) async {
     await db.transaction(() async {
       await db.customStatement(
@@ -272,17 +298,254 @@ class DaymarkStore {
     'SELECT l.day,l.subject,l.period,a.status,(SELECT GROUP_CONCAT(body, \' · \') FROM notes n WHERE n.lesson_id=l.id AND n.student_id=a.student_id) body FROM lessons l JOIN attendance a ON a.lesson_id=l.id AND a.student_id=? WHERE l.completed=1 ORDER BY l.day DESC,l.period DESC',
     [studentId],
   );
-  Future<void> close() => db.close();
+  Future<void> renameClass(int id, String name) => db.customStatement(
+    'UPDATE classes SET name=? WHERE id=?',
+    [name.trim(), id],
+  );
+  Future<void> renameStudent(int id, String first, String last) =>
+      db.customStatement(
+        'UPDATE students SET first_name=?,last_name=? WHERE id=?',
+        [first.trim(), last.trim(), id],
+      );
+  Future<void> updateSlot(
+    int id,
+    int classId,
+    String subject,
+    int weekday,
+    int period,
+    String? time,
+    String from,
+    String? to,
+  ) async {
+    await db.transaction(() async {
+      final latest = await rows(
+        'SELECT MAX(day) last_day FROM lessons WHERE slot_id=?',
+        [id],
+      );
+      final lastDay = latest.single['last_day'] as String?;
+      if (lastDay == null) {
+        await db.customStatement(
+          'UPDATE slots SET class_id=?,subject=?,weekday=?,period=?,start_time=?,valid_from=?,valid_to=? WHERE id=?',
+          [classId, subject.trim(), weekday, period, time, from, to, id],
+        );
+        return;
+      }
+      final afterLast = dayKey(
+        DateTime.parse(lastDay).add(const Duration(days: 1)),
+      );
+      final effectiveFrom = from.compareTo(afterLast) < 0 ? afterLast : from;
+      if (to != null && to.compareTo(effectiveFrom) < 0) {
+        throw const FormatException(
+          'Das Ende liegt vor dem neuen Gültigkeitsbeginn.',
+        );
+      }
+      final previousEnd = dayKey(
+        DateTime.parse(effectiveFrom).subtract(const Duration(days: 1)),
+      );
+      final oldTo =
+          (await rows('SELECT valid_to FROM slots WHERE id=?', [
+                id,
+              ])).single['valid_to']
+              as String?;
+      final boundedEnd = oldTo != null && oldTo.compareTo(previousEnd) < 0
+          ? oldTo
+          : previousEnd;
+      await db.customStatement('UPDATE slots SET valid_to=? WHERE id=?', [
+        boundedEnd,
+        id,
+      ]);
+      await db.customStatement(
+        'INSERT INTO slots(class_id,subject,weekday,period,start_time,valid_from,valid_to) VALUES (?,?,?,?,?,?,?)',
+        [classId, subject.trim(), weekday, period, time, effectiveFrom, to],
+      );
+    });
+  }
+
+  Future<List<Map<String, Object?>>> searchStudents(String query, String day) =>
+      rows(
+        'SELECT s.id,s.first_name,s.last_name,c.id class_id,c.name class_name FROM students s JOIN enrollments e ON e.student_id=s.id JOIN classes c ON c.id=e.class_id WHERE e.start_date<=? AND (e.end_date IS NULL OR e.end_date>=?) AND (s.first_name LIKE ? OR s.last_name LIKE ?) ORDER BY s.last_name COLLATE NOCASE,s.first_name COLLATE NOCASE',
+        [day, day, '%$query%', '%$query%'],
+      );
+  Future<List<Map<String, Object?>>> studentAttendance(int studentId) => rows(
+    'SELECT l.id lesson_id,l.day,l.period,l.subject,a.status FROM attendance a JOIN lessons l ON l.id=a.lesson_id WHERE a.student_id=? AND l.completed=1 ORDER BY l.day DESC,l.period DESC',
+    [studentId],
+  );
+  Future<List<Map<String, Object?>>> studentNotes(int studentId) => rows(
+    'SELECT n.id,n.body,n.lesson_id,l.day,l.period,l.subject,l.completed FROM notes n JOIN lessons l ON l.id=n.lesson_id WHERE n.student_id=? ORDER BY l.day DESC,l.period DESC,n.created_at DESC',
+    [studentId],
+  );
+  Future<List<Map<String, Object?>>> classAttendanceSummary(
+    int classId,
+    String from,
+    String to,
+  ) => rows(
+    'SELECT a.student_id,a.status,l.day FROM attendance a JOIN lessons l ON l.id=a.lesson_id WHERE l.class_id=? AND l.completed=1 AND l.day>=? AND l.day<=?',
+    [classId, from, to],
+  );
+  Future<String?> setting(String key) async {
+    final result = await rows('SELECT value FROM app_settings WHERE key=?', [
+      key,
+    ]);
+    return result.isEmpty ? null : result.single['value'] as String;
+  }
+
+  Future<void> setSetting(String key, String value) => db.customStatement(
+    'INSERT INTO app_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+    [key, value],
+  );
+  Future<void> setPeriodTimes(List<String> starts) async {
+    if (starts.length != 8 ||
+        starts.any(
+          (start) => !RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(start),
+        )) {
+      throw const FormatException('Unterrichtszeiten sind ungültig.');
+    }
+    await db.transaction(() async {
+      for (var index = 0; index < starts.length; index++) {
+        await setSetting('period_${index + 1}', starts[index]);
+      }
+    });
+  }
+
+  Future<void> changePassword(String newPassword) async {
+    if (newPassword.isEmpty) {
+      throw const FormatException('Passwort darf nicht leer sein.');
+    }
+    final escaped = newPassword.replaceAll("'", "''");
+    await db.customStatement("PRAGMA rekey = '$escaped'");
+  }
+
+  Future<void> exportBackup(File destination) async {
+    final source = _file;
+    if (source == null) {
+      throw const FormatException(
+        'Backup nur für gespeicherte Datenbanken verfügbar.',
+      );
+    }
+    if (p.normalize(source.absolute.path) ==
+        p.normalize(destination.absolute.path)) {
+      throw const FormatException('Ziel darf nicht die App-Datenbank sein.');
+    }
+    await rows('PRAGMA wal_checkpoint(TRUNCATE)');
+    final temporary = File('${destination.path}.daymark-tmp');
+    try {
+      await source.copy(temporary.path);
+      final previous = File('${destination.path}.previous');
+      if (await previous.exists()) await previous.delete();
+      if (await destination.exists()) await destination.rename(previous.path);
+      try {
+        await temporary.rename(destination.path);
+        if (await previous.exists()) await previous.delete();
+      } catch (_) {
+        if (await previous.exists()) await previous.rename(destination.path);
+        rethrow;
+      }
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
+  Future<void> _verifyPassword(String password, File file) async {
+    final connection = sqlite.sqlite3.open(file.path);
+    try {
+      connection.execute("PRAGMA key = '${password.replaceAll("'", "''")}'");
+      final result = connection.select('PRAGMA integrity_check');
+      if (result.single.values.single != 'ok') {
+        throw const FormatException('Datenbankprüfung fehlgeschlagen.');
+      }
+      connection.select('SELECT version FROM app_meta LIMIT 1');
+      final version =
+          connection.select('PRAGMA user_version').single.values.single as int;
+      if (version < 1 || version > 4) {
+        throw const FormatException('Nicht unterstützte Backup-Version.');
+      }
+    } on sqlite.SqliteException {
+      throw const FormatException('Passwort falsch oder Datenbank beschädigt.');
+    } finally {
+      connection.close();
+    }
+  }
+
+  Future<void> changePasswordVerified(
+    String oldPassword,
+    String newPassword,
+  ) async {
+    final file = _file;
+    if (file == null) {
+      throw const FormatException(
+        'Passwortwechsel nur für gespeicherte Datenbanken verfügbar.',
+      );
+    }
+    if (newPassword.isEmpty) {
+      throw const FormatException('Neues Passwort darf nicht leer sein.');
+    }
+    await rows('PRAGMA wal_checkpoint(TRUNCATE)');
+    await _verifyPassword(oldPassword, file);
+    await changePassword(newPassword);
+    await rows('PRAGMA wal_checkpoint(TRUNCATE)');
+    await _verifyPassword(newPassword, file);
+  }
+
+  Future<void> importBackup(File source, String password) async {
+    final file = _file;
+    if (file == null) {
+      throw const FormatException(
+        'Import nur für gespeicherte Datenbanken verfügbar.',
+      );
+    }
+    if (p.normalize(source.absolute.path) == p.normalize(file.absolute.path) ||
+        p.normalize(source.absolute.path) ==
+            p.normalize(File('${file.path}.before-import').absolute.path)) {
+      throw const FormatException('Quelle darf nicht die App-Datenbank sein.');
+    }
+    await _verifyPassword(password, source);
+    await close();
+    for (final suffix in ['-wal', '-shm']) {
+      final sidecar = File('${file.path}$suffix');
+      if (await sidecar.exists()) await sidecar.delete();
+    }
+    final previous = File('${file.path}.before-import');
+    if (await previous.exists()) await previous.delete();
+    await file.rename(previous.path);
+    try {
+      await source.copy(file.path);
+    } catch (_) {
+      if (await file.exists()) await file.delete();
+      await previous.rename(file.path);
+      rethrow;
+    }
+  }
+
+  Future<void> deleteAppData() async {
+    final file = _file;
+    if (file == null) {
+      throw const FormatException(
+        'Nur gespeicherte App-Daten können gelöscht werden.',
+      );
+    }
+    await close();
+    if (await file.exists()) await file.delete();
+    for (final suffix in ['-wal', '-shm', '.before-import']) {
+      final sidecar = File('${file.path}$suffix');
+      if (await sidecar.exists()) await sidecar.delete();
+    }
+  }
+
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    await db.close();
+  }
 }
 
 class DaymarkDatabase extends GeneratedDatabase {
   DaymarkDatabase(super.executor);
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 4;
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (migrator, from, to) async {
-      if (from != 1 || to != 2) {
+      if (from < 1 || from > 3 || to != 4) {
         throw StateError('Nicht unterstützte Datenbankmigration: $from → $to');
       }
       // Drift checks user_version before the store can initialize its SQL schema.

@@ -6,6 +6,38 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
+  test('upgrades encrypted version 3 without losing settings', () async {
+    final directory = await Directory.systemTemp.createTemp('daymark-v3-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/daymark.sqlite');
+    final original = await DaymarkStore.openFile(file, 'secret');
+    await original.setSetting('theme', 'dark');
+    await original.close();
+
+    final legacy = sqlite3.open(file.path);
+    try {
+      legacy.execute("PRAGMA key = 'secret'");
+      legacy.execute('DROP INDEX idx_day_notes_day');
+      legacy.execute('DROP TABLE day_notes');
+      legacy.execute('PRAGMA user_version = 3');
+      legacy.execute('UPDATE app_meta SET version = 3');
+    } finally {
+      legacy.close();
+    }
+
+    final upgraded = await DaymarkStore.openFile(file, 'secret');
+    try {
+      expect(await upgraded.setting('theme'), 'dark');
+      await upgraded.addDayNote('2027-01-01', 'Neues Jahr');
+      expect(
+        (await upgraded.dayNotes('2027-01-01')).single['body'],
+        'Neues Jahr',
+      );
+    } finally {
+      await upgraded.close();
+    }
+  });
+
   for (final alreadyExtended in [false, true]) {
     test('opens encrypted version 1 (extended: $alreadyExtended)', () async {
       final directory = await Directory.systemTemp.createTemp('daymark-test-');
@@ -54,13 +86,20 @@ void main() {
         expect(lesson.keys, containsAll(['started_at', 'summary', 'homework']));
         expect(
           (await store.rows('PRAGMA user_version')).single['user_version'],
-          2,
+          4,
         );
         expect(
           (await store.rows('SELECT version FROM app_meta')).single['version'],
-          2,
+          4,
         );
         await store.updateLessonDetails(1, 'Brüche', 'Wiederholung', 'Seite 5');
+        await store.setSetting('theme', 'dark');
+        expect(await store.setting('theme'), 'dark');
+        await store.addDayNote('2026-11-02', 'Konferenz');
+        expect(
+          (await store.dayNotes('2026-11-02')).single['body'],
+          'Konferenz',
+        );
       } finally {
         await store.close();
       }
@@ -70,6 +109,11 @@ void main() {
         expect(lesson['topic'], 'Brüche');
         expect(lesson['homework'], 'Seite 5');
         expect(lesson['completed'], 1);
+        expect(await reopened.setting('theme'), 'dark');
+        expect(
+          (await reopened.dayNotes('2026-11-02')).single['body'],
+          'Konferenz',
+        );
       } finally {
         await reopened.close();
       }

@@ -16,6 +16,7 @@ class TodayView extends StatelessWidget {
     required this.onPickDate,
     required this.onOpenLesson,
     required this.onRetry,
+    required this.notesPanel,
     this.error,
   });
 
@@ -29,6 +30,7 @@ class TodayView extends StatelessWidget {
   final VoidCallback onPickDate;
   final VoidCallback onRetry;
   final ValueChanged<TodayLesson> onOpenLesson;
+  final Widget notesPanel;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -60,14 +62,14 @@ class TodayView extends StatelessWidget {
                     children: [
                       Text(
                         germanDayLabel(date),
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: DaymarkColors.ink,
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(width: 28),
-                      const Icon(Icons.calendar_today_outlined, size: 22),
+                      Icon(Icons.calendar_today_outlined, size: 22),
                     ],
                   ),
                 ),
@@ -101,56 +103,47 @@ class TodayView extends StatelessWidget {
       );
 
   Widget _body() {
-    if (error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(error!),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: onRetry,
-              child: const Text('Erneut versuchen'),
-            ),
-          ],
-        ),
-      );
-    }
     final data = schedule;
-    if (data == null) return const Center(child: CircularProgressIndicator());
     final today = _SchedulePanel(
       title: 'Unterricht',
       children: [
-        if (data.reason != null) _DayNotice(data.reason!),
-        if (data.lessons.isEmpty) const _DayNotice('Keine Stunde geplant.'),
-        for (var index = 0; index < data.lessons.length; index++)
-          TodayLessonRow(
-            lesson: data.lessons[index],
-            now: now,
-            first: index == 0,
-            last: index == data.lessons.length - 1,
-            onOpen: () => onOpenLesson(data.lessons[index]),
+        if (error != null) ...[
+          _DayNotice(error!),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 26),
+            child: OutlinedButton(
+              onPressed: onRetry,
+              child: const Text('Erneut versuchen'),
+            ),
           ),
-      ],
-    );
-    final tomorrow = _SchedulePanel(
-      title: 'Morgen',
-      subtitle: germanDayLabel(calendarDay(date, 1)),
-      children: [
-        if (data.tomorrowReason != null) _DayNotice(data.tomorrowReason!),
-        if (data.tomorrow.isEmpty) const _DayNotice('Keine Stunde geplant.'),
-        for (final lesson in data.tomorrow)
-          TomorrowLessonTile(
-            lesson: lesson,
-            onOpen: () => onOpenLesson(lesson),
-          ),
+        ] else if (data == null)
+          const Padding(
+            padding: EdgeInsets.all(26),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else ...[
+          if (data.reason != null) _DayNotice(data.reason!),
+          if (data.lessons.isEmpty) const _DayNotice('Keine Stunde geplant.'),
+          for (var index = 0; index < data.lessons.length; index++)
+            TodayLessonRow(
+              lesson: data.lessons[index],
+              now: now,
+              first: index == 0,
+              last: index == data.lessons.length - 1,
+              onOpen: () => onOpenLesson(data.lessons[index]),
+            ),
+        ],
       ],
     );
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 850) {
           return ListView(
-            children: [today, const SizedBox(height: 12), tomorrow],
+            children: [
+              today,
+              const SizedBox(height: 12),
+              SizedBox(height: 360, child: notesPanel),
+            ],
           );
         }
         return Row(
@@ -158,7 +151,7 @@ class TodayView extends StatelessWidget {
           children: [
             Expanded(flex: 66, child: today),
             const SizedBox(width: 12),
-            Expanded(flex: 34, child: tomorrow),
+            Expanded(flex: 34, child: notesPanel),
           ],
         );
       },
@@ -167,13 +160,8 @@ class TodayView extends StatelessWidget {
 }
 
 class _SchedulePanel extends StatelessWidget {
-  const _SchedulePanel({
-    required this.title,
-    required this.children,
-    this.subtitle,
-  });
+  const _SchedulePanel({required this.title, required this.children});
   final String title;
-  final String? subtitle;
   final List<Widget> children;
 
   @override
@@ -190,28 +178,12 @@ class _SchedulePanel extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(26, 26, 26, 20),
-              child: Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 16,
-                runSpacing: 8,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (subtitle != null)
-                    Text(
-                      subtitle!,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        color: DaymarkColors.muted,
-                      ),
-                    ),
-                ],
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             const Padding(
@@ -238,7 +210,7 @@ class _DayNotice extends StatelessWidget {
     padding: const EdgeInsets.all(26),
     child: Text(
       message,
-      style: const TextStyle(color: DaymarkColors.muted, fontSize: 18),
+      style: TextStyle(color: DaymarkColors.muted, fontSize: 18),
     ),
   );
 }

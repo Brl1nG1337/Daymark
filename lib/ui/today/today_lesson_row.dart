@@ -44,9 +44,7 @@ class TodayLessonRow extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: last
                       ? null
-                      : const Border(
-                          bottom: BorderSide(color: DaymarkColors.border),
-                        ),
+                      : Border(bottom: BorderSide(color: DaymarkColors.border)),
                 ),
                 child: Row(
                   children: [
@@ -101,7 +99,7 @@ class TodayLessonRow extends StatelessWidget {
                       SizedBox(
                         width: 34,
                         child: lesson.completed
-                            ? const Icon(
+                            ? Icon(
                                 Icons.check_circle,
                                 color: DaymarkColors.success,
                                 size: 32,
@@ -130,7 +128,7 @@ class TodayLessonRow extends StatelessWidget {
                                   TextSpan(text: lesson.className),
                                   TextSpan(
                                     text: '  ·  ${lesson.subject}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: DaymarkColors.muted,
                                     ),
                                   ),
@@ -161,7 +159,7 @@ class TodayLessonRow extends StatelessWidget {
                           style: FilledButton.styleFrom(
                             minimumSize: const Size(160, 56),
                           ),
-                          icon: const Icon(Icons.play_arrow_rounded, size: 30),
+                          icon: Icon(Icons.play_arrow_rounded, size: 30),
                           label: const Text(
                             'Öffnen',
                             style: TextStyle(fontSize: 20),
@@ -188,65 +186,4 @@ class TodayLessonRow extends StatelessWidget {
       },
     );
   }
-}
-
-class TomorrowLessonTile extends StatelessWidget {
-  const TomorrowLessonTile({
-    super.key,
-    required this.lesson,
-    required this.onOpen,
-  });
-  final TodayLesson lesson;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 25),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onOpen,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 25),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: DaymarkColors.border)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${lesson.period}. Stunde',
-                style: const TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 7),
-              Text(
-                '${lessonTime(lesson.startsAt)} – ${lessonTime(lesson.endsAt)}',
-                style: const TextStyle(
-                  fontSize: 21,
-                  color: DaymarkColors.muted,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(text: lesson.className),
-                    TextSpan(
-                      text: '  ·  ${lesson.subject}',
-                      style: const TextStyle(color: DaymarkColors.muted),
-                    ),
-                  ],
-                ),
-                style: const TextStyle(fontSize: 21),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
 }

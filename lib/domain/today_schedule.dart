@@ -53,18 +53,11 @@ class TodayLesson {
 }
 
 class TodaySchedule {
-  TodaySchedule({
-    required List<TodayLesson> lessons,
-    required List<TodayLesson> tomorrow,
-    this.reason,
-    this.tomorrowReason,
-  }) : lessons = List.unmodifiable(lessons),
-       tomorrow = List.unmodifiable(tomorrow);
+  TodaySchedule({required List<TodayLesson> lessons, this.reason})
+    : lessons = List.unmodifiable(lessons);
 
   final List<TodayLesson> lessons;
-  final List<TodayLesson> tomorrow;
   final String? reason;
-  final String? tomorrowReason;
 }
 
 DateTime calendarDay(DateTime date, [int offset = 0]) =>

@@ -28,7 +28,7 @@ void main() {
     expect((await store.lesson(1))['topic'], 'Brüche');
     expect(
       (await store.rows('SELECT version FROM app_meta')).single['version'],
-      2,
+      4,
     );
   });
 

@@ -9,10 +9,8 @@ class TodayRepository {
   final DaymarkStore store;
 
   Future<TodaySchedule> load(DateTime date) async {
-    final tomorrow = calendarDay(date, 1);
-    final (todayRows, tomorrowRows, freeDays) = await (
+    final (todayRows, freeDays) = await (
       store.dayEntries(date),
-      store.dayEntries(tomorrow),
       store.freeDays(),
     ).wait;
     final days = freeDays.map((row) => row['day'] as String).toSet();
@@ -25,9 +23,7 @@ class TodayRepository {
 
     return TodaySchedule(
       lessons: todayRows.map(_lesson).toList(),
-      tomorrow: tomorrowRows.map(_lesson).toList(),
       reason: reason(date),
-      tomorrowReason: reason(tomorrow),
     );
   }
 

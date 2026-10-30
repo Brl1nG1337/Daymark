@@ -17,6 +17,7 @@ class _DaymarkLoginState extends State<DaymarkLogin> {
   DaymarkStore? store;
   String? error;
   bool loading = false;
+  ThemeMode themeMode = ThemeMode.light;
 
   @override
   void dispose() {
@@ -36,7 +37,13 @@ class _DaymarkLoginState extends State<DaymarkLogin> {
     });
     try {
       final opened = await DaymarkStore.open(password.text);
-      if (mounted) setState(() => store = opened);
+      final savedTheme = await opened.setting('theme');
+      if (mounted) {
+        setState(() {
+          store = opened;
+          themeMode = savedTheme == 'dark' ? ThemeMode.dark : ThemeMode.light;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
     } finally {
@@ -47,12 +54,19 @@ class _DaymarkLoginState extends State<DaymarkLogin> {
 
   @override
   Widget build(BuildContext context) {
+    DaymarkColors.dark = themeMode == ThemeMode.dark;
     return MaterialApp(
       title: 'Daymark',
       debugShowCheckedModeBanner: false,
       theme: daymarkTheme(),
+      darkTheme: daymarkTheme(dark: true),
+      themeMode: themeMode,
       home: store != null
-          ? DaymarkApp(store: store!)
+          ? DaymarkApp(
+              store: store!,
+              onSessionEnded: () => setState(() => store = null),
+              onThemeChanged: (value) => setState(() => themeMode = value),
+            )
           : Scaffold(
               body: Center(
                 child: SizedBox(
@@ -60,13 +74,13 @@ class _DaymarkLoginState extends State<DaymarkLogin> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.school_outlined, size: 52),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Daymark',
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
+                      Container(
+                        height: 120,
+                        color: Colors.white,
+                        child: Image.asset(
+                          'assets/branding/daymark-logo-v1.png',
+                          fit: BoxFit.contain,
+                          semanticLabel: 'Daymark',
                         ),
                       ),
                       const SizedBox(height: 12),

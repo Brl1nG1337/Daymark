@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 /// Only invokes a bundled local executable. No OS cloud dictation or network API.
 class OfflineDictation {
@@ -29,7 +30,13 @@ class OfflineDictation {
       _recording = false;
       final appDir = p.dirname(Platform.resolvedExecutable);
       final cli = p.join(appDir, 'data', 'whisper', 'whisper-cli.exe');
-      final model = p.join(appDir, 'data', 'whisper', 'ggml-base.bin');
+      final installed = p.join(
+        (await getApplicationSupportDirectory()).path,
+        'whisper',
+        'ggml-base.bin',
+      );
+      final bundled = p.join(appDir, 'data', 'whisper', 'ggml-base.bin');
+      final model = await File(installed).exists() ? installed : bundled;
       if (!await File(cli).exists() || !await File(model).exists()) {
         throw const FormatException(
           'Das lokale Sprachmodell fehlt im Programmordner.',

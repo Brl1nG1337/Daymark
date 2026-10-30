@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../data/daymark_store.dart';
 import '../../data/today_repository.dart';
 import '../../domain/today_schedule.dart';
+import '../day_notes/day_notes_panel.dart';
 import 'today_view.dart';
 
 /// Owns loading and calendar navigation; rendering stays database independent.
@@ -90,6 +91,11 @@ class _TodayPageState extends State<TodayPage> {
       onPickDate: _pickDate,
       onRetry: () => setState(_load),
       onOpenLesson: widget.onOpenLesson,
+      notesPanel: DayNotesPanel(
+        key: ValueKey(dayKey(_date)),
+        store: widget.store,
+        date: _date,
+      ),
     ),
   );
 }

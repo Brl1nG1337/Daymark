@@ -23,30 +23,27 @@ class DaymarkSidebar extends StatelessWidget {
         children: [
           SizedBox(
             height: 58,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                if (!compact) const SizedBox(width: 16),
-                const Icon(
-                  Icons.tablet_mac_outlined,
-                  color: Color(0xff00b6e8),
-                  size: 30,
+            child: Tooltip(
+              message: 'Daymark',
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                if (!compact) ...[
-                  const SizedBox(width: 14),
-                  const Flexible(
-                    child: Text(
-                      'Daymark',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 23,
-                        fontWeight: FontWeight.w600,
+                child: compact
+                    ? const Center(
+                        child: Icon(
+                          Icons.today,
+                          color: Color(0xff0785ff),
+                          size: 30,
+                        ),
+                      )
+                    : Image.asset(
+                        'assets/branding/daymark-logo-v1.png',
+                        fit: BoxFit.contain,
+                        semanticLabel: 'Daymark',
                       ),
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
           const SizedBox(height: 28),
@@ -54,7 +51,12 @@ class DaymarkSidebar extends StatelessWidget {
           const SizedBox(height: 8),
           _destination(1, 'Klassen', Icons.groups_rounded, compact),
           const SizedBox(height: 8),
-          _destination(2, 'Planung', Icons.calendar_month_outlined, compact),
+          _destination(
+            2,
+            'Stundenplan',
+            Icons.calendar_month_outlined,
+            compact,
+          ),
           const Spacer(),
           const Divider(color: Color(0xff30485d), indent: 10, endIndent: 10),
           const SizedBox(height: 10),
