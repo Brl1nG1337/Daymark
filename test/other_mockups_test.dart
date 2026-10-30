@@ -48,9 +48,113 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Unterrichtszeiten'), findsOneWidget);
+      expect(find.text('Schuljahr & Kalender'), findsOneWidget);
+      expect(find.text('Daten & Sicherheit'), findsOneWidget);
+      expect(find.text('Design'), findsOneWidget);
+      expect(find.text('Darstellung'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('timetable uses stable subject colors for visual grouping', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await DaymarkStore.inMemory();
+    addTearDown(store.close);
+    await store.addClass('8b');
+    await store.addSlot(1, 'Englisch', 1, 1, '08:00', '2020-01-01');
+    await store.addSlot(1, 'Englisch', 2, 1, '08:00', '2020-01-01');
+    await store.addSlot(1, 'Deutsch', 3, 1, '08:00', '2020-01-01');
+
+    await tester.pumpWidget(MaterialApp(home: DaymarkApp(store: store)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stundenplan').first);
+    await tester.pumpAndSettle();
+
+    final englishMonday = tester.widget<Material>(
+      find.byKey(const ValueKey('planning-slot-1-1')),
+    );
+    final englishTuesday = tester.widget<Material>(
+      find.byKey(const ValueKey('planning-slot-2-1')),
+    );
+    final germanWednesday = tester.widget<Material>(
+      find.byKey(const ValueKey('planning-slot-3-1')),
+    );
+    expect(englishMonday.color, englishTuesday.color);
+    expect(englishMonday.color, isNot(germanWednesday.color));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('class roster keeps headings and cells on one column grid', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1125, 637);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await DaymarkStore.inMemory();
+    addTearDown(store.close);
+    await store.setSetting('school_year', '2026');
+    await store.addClass('3A');
+    await store.addStudent(1, 'Amelie', 'Becker');
+    await store.db.customStatement(
+      "UPDATE enrollments SET start_date='2026-08-01'",
+    );
+    final lessonDay = DateTime(2026, 10, 15);
+    await store.addSlot(
+      1,
+      'Englisch',
+      lessonDay.weekday,
+      2,
+      '08:50',
+      '2026-08-01',
+    );
+    final lessonId = await store.openLesson(
+      (await store.slots()).single,
+      '2026-10-15',
+    );
+    await store.setAttendance(lessonId, 1, 'absent');
+    await store.complete(lessonId);
+
+    await tester.pumpWidget(MaterialApp(home: DaymarkApp(store: store)));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byTooltip('Klassen').evaluate().isNotEmpty
+          ? find.byTooltip('Klassen')
+          : find.text('Klassen').first,
+    );
+    await tester.pumpAndSettle();
+
+    final headingAbsences = tester.getCenter(
+      find.byKey(const ValueKey('roster-heading-absences')),
+    );
+    final headingLates = tester.getCenter(
+      find.byKey(const ValueKey('roster-heading-lates')),
+    );
+    final headingLastEntry = tester.getCenter(
+      find.byKey(const ValueKey('roster-heading-last-entry')),
+    );
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('roster-1-absences'))).dx,
+      closeTo(headingAbsences.dx, 1),
+    );
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('roster-1-lates'))).dx,
+      closeTo(headingLates.dx, 1),
+    );
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('roster-1-last-entry'))).dx,
+      closeTo(headingLastEntry.dx, 1),
+    );
+    expect(find.text('15.10.2026'), findsOneWidget);
+    expect(find.text('2026-10-15'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('edits class, timetable entry and lesson time', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1;
@@ -70,26 +174,50 @@ void main() {
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
     expect((await store.classes()).single['name'], '8c');
+    expect(find.text('Schüler (0)'), findsOneWidget);
+    await tester.tap(find.text('Schüler hinzufügen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Max');
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Muster');
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(find.text('Muster, Max'), findsOneWidget);
     await tester.tap(find.text('Stundenplan').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Englisch').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bearbeiten'));
     await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.widgetWithText(TextFormField, 'Gültig ab (TT.MM.JJJJ)'),
+          )
+          .initialValue,
+      '01.01.2020',
+    );
     await tester.enterText(find.widgetWithText(TextField, 'Fach'), 'Deutsch');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
     expect((await store.slots()).single['subject'], 'Deutsch');
+    expect((await store.slots()).single['valid_from'], '2020-01-01');
     await tester.tap(find.text('Einstellungen').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Unterrichtszeiten'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('1. Stunde'));
+    expect(find.text('Unterrichtszeiten bearbeiten'), findsOneWidget);
+    expect(find.text('Zeiten bearbeiten'), findsNothing);
+    await tester.enterText(
+      find.byKey(const ValueKey('period-1-start')),
+      '08:10',
+    );
+    await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, '08:15');
-    await tester.tap(find.text('Übernehmen'));
-    await tester.pumpAndSettle();
-    expect(await store.setting('period_1'), '08:15');
+    expect(await store.setting('period_1'), '08:10');
+    expect(find.text('Unterrichtszeiten bearbeiten'), findsNothing);
+    expect(find.text('Unterrichtszeiten gespeichert.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('school free days live in settings', (tester) async {
@@ -106,11 +234,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Tag hinzufügen'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField).first, '2026-11-02');
+    await tester.enterText(find.byType(TextFormField).first, '02.11.2026');
     await tester.enterText(find.byType(TextFormField).last, 'Studientag');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
     expect((await store.freeDays()).single['label'], 'Studientag');
+    expect((await store.freeDays()).single['day'], '2026-11-02');
+    expect(find.text('02.11.2026'), findsOneWidget);
   });
   testWidgets('global student search opens a note in its lesson', (
     tester,
@@ -135,7 +265,7 @@ void main() {
     await tester.tap(find.text('Klassen').first);
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Schüler/in suchen'),
+      find.widgetWithText(TextField, 'Schüler suchen'),
       'Hartmann',
     );
     await tester.pumpAndSettle();
@@ -177,6 +307,8 @@ void main() {
     addTearDown(() => DaymarkColors.dark = false);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Einstellungen').first);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Design'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Design'));
     await tester.pumpAndSettle();

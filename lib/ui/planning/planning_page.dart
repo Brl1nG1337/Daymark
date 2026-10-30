@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../../data/daymark_store.dart';
-import '../../domain/iso_day.dart';
+import '../../domain/date_formatting.dart';
 import '../theme/daymark_theme.dart';
+
+const _weekdays = <String>[
+  'Montag',
+  'Dienstag',
+  'Mittwoch',
+  'Donnerstag',
+  'Freitag',
+  'Samstag',
+  'Sonntag',
+];
 
 class PlanningPage extends StatefulWidget {
   const PlanningPage({super.key, required this.store});
@@ -75,8 +85,8 @@ class _PlanningPageState extends State<PlanningPage> {
     final configuredTime = await widget.store.setting('period_$period');
     if (!mounted) return;
     var time = slot?.time ?? configuredTime ?? '';
-    var from = slot?.from ?? dayKey(DateTime(_year, 8, 1));
-    var to = slot?.to ?? '';
+    var from = formatGermanIsoDate(slot?.from ?? dayKey(DateTime(_year, 8, 1)));
+    var to = slot?.to == null ? '' : formatGermanIsoDate(slot!.to!);
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -152,7 +162,7 @@ class _PlanningPageState extends State<PlanningPage> {
                     initialValue: from,
                     onChanged: (value) => from = value,
                     decoration: const InputDecoration(
-                      labelText: 'Gültig ab (JJJJ-MM-TT)',
+                      labelText: 'Gültig ab (TT.MM.JJJJ)',
                     ),
                   ),
                   TextFormField(
@@ -180,8 +190,11 @@ class _PlanningPageState extends State<PlanningPage> {
       ),
     );
     if (accepted == true) {
-      final validDate = isIsoDay(from) && (to.isEmpty || isIsoDay(to));
-      final validRange = to.isEmpty || from.compareTo(to) <= 0;
+      final fromIso = germanDateToIso(from);
+      final toIso = to.isEmpty ? null : germanDateToIso(to);
+      final validDate = fromIso != null && (to.isEmpty || toIso != null);
+      final validRange =
+          fromIso != null && (toIso == null || fromIso.compareTo(toIso) <= 0);
       final validTime =
           time.isEmpty || RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(time);
       if (subject.trim().isEmpty || !validDate || !validRange || !validTime) {
@@ -200,7 +213,7 @@ class _PlanningPageState extends State<PlanningPage> {
             weekday!,
             period!,
             time.isEmpty ? null : time,
-            from,
+            fromIso,
           ),
         );
       } else {
@@ -212,8 +225,8 @@ class _PlanningPageState extends State<PlanningPage> {
             weekday!,
             period!,
             time.isEmpty ? null : time,
-            from,
-            to.isEmpty ? null : to,
+            fromIso,
+            toIso,
           ),
         );
       }
@@ -221,7 +234,7 @@ class _PlanningPageState extends State<PlanningPage> {
   }
 
   Future<void> _endSlot(_Slot slot) async {
-    var end = dayKey(DateTime.now());
+    var end = formatGermanDate(DateTime.now());
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -230,7 +243,7 @@ class _PlanningPageState extends State<PlanningPage> {
           initialValue: end,
           onChanged: (value) => end = value,
           decoration: const InputDecoration(
-            labelText: 'Letzter Gültigkeitstag (JJJJ-MM-TT)',
+            labelText: 'Letzter Gültigkeitstag (TT.MM.JJJJ)',
           ),
         ),
         actions: [
@@ -246,7 +259,8 @@ class _PlanningPageState extends State<PlanningPage> {
       ),
     );
     if (accepted != true) return;
-    if (!isIsoDay(end) || end.compareTo(slot.from) < 0) {
+    final endIso = germanDateToIso(end);
+    if (endIso == null || endIso.compareTo(slot.from) < 0) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -256,7 +270,7 @@ class _PlanningPageState extends State<PlanningPage> {
       }
       return;
     }
-    await _run(() => widget.store.endSlot(slot.id, end));
+    await _run(() => widget.store.endSlot(slot.id, endIso));
   }
 
   @override
@@ -348,23 +362,29 @@ class _PlanningPageState extends State<PlanningPage> {
                       children: [
                         ListTile(
                           title: Text(
-                            [
-                              'Montag',
-                              'Dienstag',
-                              'Mittwoch',
-                              'Donnerstag',
-                              'Freitag',
-                            ][weekday - 1],
+                            _weekdays[weekday - 1],
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         for (final slot in visible.where(
                           (slot) => slot.weekday == weekday,
                         ))
                           ListTile(
-                            title: Text(
-                              '${slot.period}. Stunde · ${slot.className} · ${slot.subject}',
+                            leading: _SubjectMarker(
+                              accent: _accentForSubject(slot.subject),
                             ),
-                            subtitle: Text(slot.time ?? '–'),
+                            title: Text(
+                              slot.subject,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${slot.period}. Stunde · ${slot.time ?? '–'} · ${slot.className}',
+                            ),
                             onTap: () => setState(() => _selectedId = slot.id),
                           ),
                       ],
@@ -390,7 +410,16 @@ class _PlanningPageState extends State<PlanningPage> {
                               children: [
                                 Container(
                                   height: 48,
-                                  color: DaymarkColors.background,
+                                  decoration: BoxDecoration(
+                                    color: DaymarkColors.primary.withValues(
+                                      alpha: DaymarkColors.dark ? .14 : .07,
+                                    ),
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: DaymarkColors.border,
+                                      ),
+                                    ),
+                                  ),
                                   child: Row(
                                     children: [
                                       const SizedBox(width: 112),
@@ -406,6 +435,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                             child: Text(
                                               day,
                                               style: const TextStyle(
+                                                fontSize: 15,
                                                 fontWeight: FontWeight.w700,
                                               ),
                                             ),
@@ -419,12 +449,40 @@ class _PlanningPageState extends State<PlanningPage> {
                                   period <= maxPeriod;
                                   period++
                                 )
-                                  SizedBox(
+                                  Container(
                                     height: 92,
+                                    decoration: BoxDecoration(
+                                      color: period.isEven
+                                          ? DaymarkColors.background.withValues(
+                                              alpha: DaymarkColors.dark
+                                                  ? .22
+                                                  : .45,
+                                            )
+                                          : Colors.transparent,
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: DaymarkColors.border
+                                              .withValues(alpha: .7),
+                                        ),
+                                      ),
+                                    ),
                                     child: Row(
                                       children: [
-                                        SizedBox(
+                                        Container(
                                           width: 112,
+                                          decoration: BoxDecoration(
+                                            color: DaymarkColors.primary
+                                                .withValues(
+                                                  alpha: DaymarkColors.dark
+                                                      ? .08
+                                                      : .035,
+                                                ),
+                                            border: Border(
+                                              right: BorderSide(
+                                                color: DaymarkColors.border,
+                                              ),
+                                            ),
+                                          ),
                                           child: Padding(
                                             padding: const EdgeInsets.only(
                                               left: 16,
@@ -510,11 +568,14 @@ class _PlanningPageState extends State<PlanningPage> {
                   children: [
                     for (final slot in entries)
                       ListTile(
+                        leading: _SubjectMarker(
+                          accent: _accentForSubject(slot.subject),
+                        ),
                         title: Text(
                           '${slot.className} · ${slot.subject} · ${slot.period}. Stunde',
                         ),
                         subtitle: Text(
-                          '${slot.from}${slot.to == null ? '' : ' – ${slot.to}'}',
+                          '${formatGermanIsoDate(slot.from)}${slot.to == null ? '' : ' – ${formatGermanIsoDate(slot.to!)}'}',
                         ),
                         onTap: () {
                           Navigator.pop(context);
@@ -569,14 +630,18 @@ class _PlanningPageState extends State<PlanningPage> {
         .where((slot) => slot.weekday == weekday && slot.period == period)
         .toList();
     final selected = entries.any((slot) => slot.id == _selectedId);
+    final accent = entries.isEmpty
+        ? null
+        : _accentForSubject(entries.first.subject);
     return Padding(
       padding: const EdgeInsets.all(5),
       child: Material(
+        key: ValueKey('planning-slot-$weekday-$period'),
         color: entries.isEmpty
             ? DaymarkColors.background
             : selected
             ? DaymarkColors.activeSurface
-            : DaymarkColors.surface,
+            : accent!.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: BorderSide(
@@ -592,7 +657,7 @@ class _PlanningPageState extends State<PlanningPage> {
               ? () => _edit(null, weekday: weekday, period: period)
               : () => setState(() => _selectedId = entries.first.id),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: EdgeInsets.fromLTRB(entries.isEmpty ? 12 : 0, 8, 12, 8),
             child: entries.isEmpty
                 ? Center(
                     child: _hoveredCell == cellId
@@ -609,24 +674,41 @@ class _PlanningPageState extends State<PlanningPage> {
                             color: DaymarkColors.border,
                           ),
                   )
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                : Row(
                     children: [
-                      Text(
-                        entries.first.subject,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      Container(
+                        width: 4,
+                        height: 48,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? DaymarkColors.active
+                              : accent!.color,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        entries.map((slot) => slot.className).join(', '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: DaymarkColors.muted,
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entries.first.subject,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            _ClassBadge(
+                              label: entries
+                                  .map((slot) => slot.className)
+                                  .join(', '),
+                              accent: accent!,
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -671,17 +753,51 @@ class _PlanningPageState extends State<PlanningPage> {
                   ),
                   const Divider(),
                   const SizedBox(height: 12),
-                  Text(
-                    '${slot.className} · ${slot.subject}',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _accentForSubject(slot.subject).surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border(
+                        left: BorderSide(
+                          color: _accentForSubject(slot.subject).color,
+                          width: 4,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          slot.subject,
+                          style: const TextStyle(
+                            fontSize: 21,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _ClassBadge(
+                          label: slot.className,
+                          accent: _accentForSubject(slot.subject),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 14),
                   Text(
-                    '${['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][slot.weekday - 1]} · ${slot.period}. Stunde',
+                    '${_weekdays[slot.weekday - 1]} · ${slot.period}. Stunde',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  Text(slot.time ?? 'Keine Startzeit'),
+                  const SizedBox(height: 3),
+                  Text(
+                    slot.time ?? 'Keine Startzeit',
+                    style: TextStyle(color: DaymarkColors.muted),
+                  ),
                   const Divider(height: 32),
-                  Text('Gültig ab ${slot.from}'),
-                  if (slot.to != null) Text('Bis ${slot.to}'),
+                  Text('Gültig ab ${formatGermanIsoDate(slot.from)}'),
+                  if (slot.to != null)
+                    Text('Bis ${formatGermanIsoDate(slot.to!)}'),
                   const SizedBox(height: 14),
                   OutlinedButton.icon(
                     onPressed: () => _edit(slot),
@@ -706,6 +822,96 @@ class _PlanningPageState extends State<PlanningPage> {
       side: BorderSide(color: DaymarkColors.border),
     ),
     child: child,
+  );
+}
+
+class _ClassBadge extends StatelessWidget {
+  const _ClassBadge({required this.label, required this.accent});
+
+  final String label;
+  final _SubjectAccent accent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    constraints: const BoxConstraints(maxWidth: 170),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: accent.color.withValues(alpha: DaymarkColors.dark ? .18 : .12),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: accent.foreground,
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
+
+class _SubjectMarker extends StatelessWidget {
+  const _SubjectMarker({required this.accent});
+
+  final _SubjectAccent accent;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 5,
+    height: 38,
+    decoration: BoxDecoration(
+      color: accent.color,
+      borderRadius: BorderRadius.circular(4),
+    ),
+  );
+}
+
+class _SubjectAccent {
+  const _SubjectAccent({
+    required this.color,
+    required this.surface,
+    required this.foreground,
+  });
+
+  final Color color;
+  final Color surface;
+  final Color foreground;
+}
+
+_SubjectAccent _accentForSubject(String subject) {
+  const lightColors = <Color>[
+    Color(0xff2563eb),
+    Color(0xff7c3aed),
+    Color(0xffc2410c),
+    Color(0xff0f766e),
+    Color(0xffbe185d),
+    Color(0xff4d7c0f),
+    Color(0xff0369a1),
+    Color(0xffa16207),
+  ];
+  const darkColors = <Color>[
+    Color(0xff60a5fa),
+    Color(0xffa78bfa),
+    Color(0xfffb923c),
+    Color(0xff2dd4bf),
+    Color(0xfff472b6),
+    Color(0xffa3e635),
+    Color(0xff38bdf8),
+    Color(0xfffacc15),
+  ];
+  final normalized = subject.trim().toLowerCase();
+  final colorIndex =
+      normalized.runes.fold<int>(0, (sum, rune) => sum + rune) %
+      lightColors.length;
+  final color = (DaymarkColors.dark ? darkColors : lightColors)[colorIndex];
+  return _SubjectAccent(
+    color: color,
+    surface: color.withValues(alpha: DaymarkColors.dark ? .14 : .08),
+    foreground: DaymarkColors.dark
+        ? color
+        : Color.lerp(color, Colors.black, .2)!,
   );
 }
 

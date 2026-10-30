@@ -19,6 +19,8 @@ class TodayLessonRow extends StatelessWidget {
   final bool last;
   final VoidCallback onOpen;
 
+  static const double minimumHeight = 88;
+
   @override
   Widget build(BuildContext context) {
     final current = lesson.isCurrent(now);
@@ -39,8 +41,8 @@ class TodayLessonRow extends StatelessWidget {
               label:
                   '${lesson.period}. Stunde, ${lesson.className}, ${lesson.subject}, $status',
               child: Container(
-                constraints: const BoxConstraints(minHeight: 115),
-                margin: const EdgeInsets.symmetric(horizontal: 26),
+                constraints: const BoxConstraints(minHeight: minimumHeight),
+                margin: const EdgeInsets.symmetric(horizontal: 20),
                 decoration: BoxDecoration(
                   border: last
                       ? null
@@ -49,12 +51,12 @@ class TodayLessonRow extends StatelessWidget {
                 child: Row(
                   children: [
                     SizedBox(
-                      width: compact ? 66 : 88,
+                      width: compact ? 60 : 76,
                       child: Text(
                         '${lessonTime(lesson.startsAt)}\n${lessonTime(lesson.endsAt)}',
                         style: TextStyle(
-                          fontSize: compact ? 16 : 20,
-                          height: 1.4,
+                          fontSize: compact ? 15 : 17,
+                          height: 1.3,
                           color: current
                               ? DaymarkColors.active
                               : DaymarkColors.muted,
@@ -62,14 +64,14 @@ class TodayLessonRow extends StatelessWidget {
                       ),
                     ),
                     SizedBox(
-                      width: 30,
-                      height: 114,
+                      width: 26,
+                      height: minimumHeight,
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
                           Positioned(
-                            top: first ? 57 : 0,
-                            bottom: last ? 57 : 0,
+                            top: first ? minimumHeight / 2 : 0,
+                            bottom: last ? minimumHeight / 2 : 0,
                             child: Container(
                               width: 1,
                               color: current
@@ -78,8 +80,8 @@ class TodayLessonRow extends StatelessWidget {
                             ),
                           ),
                           Container(
-                            width: current ? 23 : 20,
-                            height: current ? 23 : 20,
+                            width: current ? 21 : 18,
+                            height: current ? 21 : 18,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: DaymarkColors.surface,
@@ -94,34 +96,34 @@ class TodayLessonRow extends StatelessWidget {
                         ],
                       ),
                     ),
-                    SizedBox(width: compact ? 14 : 27),
+                    SizedBox(width: compact ? 12 : 20),
                     if (!compact) ...[
                       SizedBox(
-                        width: 34,
+                        width: 30,
                         child: lesson.completed
                             ? Icon(
                                 Icons.check_circle,
                                 color: DaymarkColors.success,
-                                size: 32,
+                                size: 28,
                               )
                             : null,
                       ),
-                      const SizedBox(width: 38),
+                      const SizedBox(width: 26),
                     ],
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        padding: const EdgeInsets.symmetric(vertical: 6),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               '${lesson.period}. Stunde',
                               style: TextStyle(
-                                fontSize: compact ? 18 : 21,
+                                fontSize: compact ? 17 : 18,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            const SizedBox(height: 5),
+                            const SizedBox(height: 3),
                             Text.rich(
                               TextSpan(
                                 children: [
@@ -134,10 +136,10 @@ class TodayLessonRow extends StatelessWidget {
                                   ),
                                 ],
                               ),
-                              style: TextStyle(fontSize: compact ? 17 : 21),
+                              style: TextStyle(fontSize: compact ? 16 : 17),
                             ),
                             if (compact) ...[
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 5),
                               Text(
                                 current ? 'Öffnen' : status,
                                 style: TextStyle(
@@ -157,19 +159,19 @@ class TodayLessonRow extends StatelessWidget {
                         FilledButton.icon(
                           onPressed: onOpen,
                           style: FilledButton.styleFrom(
-                            minimumSize: const Size(160, 56),
+                            minimumSize: const Size(132, 44),
                           ),
-                          icon: Icon(Icons.play_arrow_rounded, size: 30),
+                          icon: Icon(Icons.play_arrow_rounded, size: 26),
                           label: const Text(
                             'Öffnen',
-                            style: TextStyle(fontSize: 20),
+                            style: TextStyle(fontSize: 18),
                           ),
                         )
                       else
                         Text(
                           status,
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 16,
                             color: lesson.completed
                                 ? DaymarkColors.success
                                 : DaymarkColors.muted,

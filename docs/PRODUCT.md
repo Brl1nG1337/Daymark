@@ -3,6 +3,8 @@
 Daymark unterstützt Lehrkräfte bei Klassenverwaltung, Stundenplanung,
 Anwesenheit und Schüleranmerkungen. Daten bleiben lokal und verschlüsselt.
 Primäre Zielplattform ist Windows Desktop. UI-Sprache ist Deutsch.
+Alle sichtbaren Kalenderdaten, Datumseingaben und Datumslisten verwenden
+deutsche Formate und Bezeichnungen. Datumseingaben erfolgen als `TT.MM.JJJJ`.
 
 ## Bestehende Funktionen
 
@@ -17,19 +19,23 @@ Schülerhistorie, NRW-Schulkalender, eigene freie Tage und Offline-Diktat.
 - Pfeile wechseln genau einen Kalendertag, auch über Wochen-, Monats- und
   Jahresgrenzen. Der Kalender wählt ein beliebiges Datum; „Heute“ setzt zurück.
 - Unterricht zeigt Stunden der Auswahl nach Stundennummer und Startzeit.
-- Neben dem Unterricht stehen Tagesnotizen für das ausgewählte Datum. Mehrere
-  Notizen lassen sich unabhängig von Unterrichtsstunden anlegen, bearbeiten und
-  löschen. Das funktioniert auch für vergangene und zukünftige Tage.
+- Neben dem Unterricht steht die „Vor- & Nachbereitung“ für das ausgewählte
+  Datum. Mehrere Einträge lassen sich unabhängig von Unterrichtsstunden anlegen,
+  bearbeiten und löschen. Das funktioniert auch für vergangene und zukünftige
+  Tage.
 - Abgeschlossen ist ausschließlich eine ausdrücklich abgeschlossene Stunde.
   Vergangene Uhrzeit schließt eine Stunde nicht automatisch ab.
 - Begonnen bezeichnet eine gestartete, noch nicht abgeschlossene Stunde.
+  Der Start kann in den Stundendetails nach Bestätigung rückgängig gemacht
+  werden; dabei werden die zugehörigen Stundendaten gelöscht.
 - Die zeitlich laufende, nicht abgeschlossene Stunde wird blau hervorgehoben.
   Die Zeitmarkierung aktualisiert sich minütlich.
 - Eine Stunde öffnen führt in ihre bestehenden Details. Das Starten bleibt
   eine eigene Aktion und erfolgt nicht bereits beim Öffnen der Übersicht.
 - Ferien, Feiertage und eigene freie Tage erscheinen als Hinweis. Vorhandene
   Stunden bleiben sichtbar; ein Kalenderhinweis löscht keine Unterrichtsdaten.
-- Leere Tagespläne zeigen „Keine Stunde geplant.“; Ladefehler erlauben Wiederholen.
+- Leere Tagespläne bündeln Kalenderhinweis und Leerzustand in einer kompakten
+  Darstellung; Ladefehler erlauben Wiederholen.
   Notizen bleiben auch bei einem Ladefehler des Unterrichtsplans zugänglich.
 
 ## Stunde Detail
@@ -52,11 +58,14 @@ oder ungültige Startzeiten erscheinen als „–“ und werden nicht zeitlich m
 Mockup-Datum, Beispielklassen und Fächer sind keine produktiven Vorgabedaten.
 
 Die Seitenleiste führt zu Heute, Klassen, Stundenplan und Einstellungen. Klassen
-zeigen eine globale Schülersuche, Schuljahres-Fehlzeiten und Schülerdetails mit
+zeigen eine globale Schülersuche, eine kompakte Klasseninfo, eine
+Schülerliste mit direkter Hinzufügen-Aktion, Schuljahres-Fehlzeiten und Schülerdetails mit
 Bemerkungen. Stundenplan zeigt Einträge im Wochenraster. Schulfreie Tage werden unter
-Einstellungen verwaltet. Einstellungen zeigen eine Liste mit einzelnen Dialogen und speichern Unterrichtszeiten, aktuelles
+Einstellungen verwaltet. Einstellungen zeigen thematisch gruppierte Karten mit einzelnen Dialogen und speichern Unterrichtszeiten, aktuelles
 Schuljahr, Planungs-Startdatum und Designwahl. Unterrichtszeiten dienen als
-Vorgabe für neue Plan-Einträge; bestehende Startzeiten bleiben erhalten.
+Vorgabe für neue Plan-Einträge; bestehende Startzeiten bleiben erhalten. Alle
+acht Startzeiten werden gemeinsam in einem Dialog bearbeitet, vor dem Speichern
+auf gültige, überschneidungsfreie Uhrzeiten geprüft und atomar übernommen.
 Verschlüsselte Backups können exportiert und nach Prüfung importiert werden;
 Passwortwechsel und bestätigtes Löschen der lokalen App-Daten sind möglich.
 Ein importiertes Diktatmodell liegt im lokalen App-Support-Verzeichnis.

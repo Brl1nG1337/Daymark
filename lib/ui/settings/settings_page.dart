@@ -6,9 +6,11 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/daymark_store.dart';
+import '../../domain/date_formatting.dart';
 import '../../domain/iso_day.dart';
 import '../theme/daymark_theme.dart';
 import 'free_days_dialog.dart';
+import 'lesson_times_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -51,7 +53,12 @@ class _SettingsPageState extends State<SettingsPage> {
     };
   }
 
-  void _reload() => setState(() => _settings = _load());
+  void _reload() {
+    setState(() {
+      _settings = _load();
+    });
+  }
+
   void _message(String message) =>
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
@@ -120,63 +127,28 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ) ??
       false;
-  Future<void> _editTime(int period, String current) async {
-    final value = await _prompt(
-      '$period. Stunde: Startzeit (HH:MM)',
-      initial: current,
-    );
-    if (value == null) return;
-    if (!RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(value)) {
-      if (mounted) _error('Ungültige Uhrzeit.');
-      return;
-    }
-    await _run(() => widget.store.setSetting('period_$period', value));
-  }
-
   bool _validSchoolYear(String value) {
     if (!RegExp(r'^\d{4}/\d{2}$').hasMatch(value)) return false;
     final first = int.parse(value.substring(0, 4));
     return value == '$first/${((first + 1) % 100).toString().padLeft(2, '0')}';
   }
 
-  Future<void> _editAllTimes(Map<String, String> settings) async {
-    final starts = [
-      for (var i = 1; i <= 8; i++)
-        settings['period_$i'] ?? _defaultTimes[i - 1],
-    ];
-    final accepted = await showDialog<bool>(
+  Future<void> _editLessonTimes(Map<String, String> settings) async {
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Unterrichtszeiten bearbeiten'),
-        content: SizedBox(
-          width: 420,
-          height: 480,
-          child: ListView(
-            children: [
-              for (var index = 0; index < 8; index++)
-                TextFormField(
-                  initialValue: starts[index],
-                  decoration: InputDecoration(
-                    labelText: '${index + 1}. Stunde · Startzeit',
-                  ),
-                  onChanged: (value) => starts[index] = value,
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Speichern'),
-          ),
+      barrierDismissible: false,
+      builder: (context) => LessonTimesDialog(
+        initialStartTimes: [
+          for (var i = 1; i <= 8; i++)
+            settings['period_$i'] ?? _defaultTimes[i - 1],
         ],
+        onSave: widget.store.setPeriodTimes,
       ),
     );
-    if (accepted == true) await _run(() => widget.store.setPeriodTimes(starts));
+    if (saved == true && mounted) {
+      _reload();
+      _message('Unterrichtszeiten gespeichert.');
+    }
   }
 
   Future<void> _export() async {
@@ -354,12 +326,65 @@ class _SettingsPageState extends State<SettingsPage> {
     IconData icon,
     VoidCallback action, {
     String? subtitle,
-  }) => ListTile(
-    leading: Icon(icon),
-    title: Text(title),
-    subtitle: subtitle == null ? null : Text(subtitle),
-    trailing: const Icon(Icons.chevron_right),
-    onTap: action,
+    String? badge,
+  }) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: action,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 70),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: DaymarkColors.border)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 30, color: DaymarkColors.ink),
+            const SizedBox(width: 22),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(color: DaymarkColors.ink, fontSize: 19),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: DaymarkColors.muted,
+                        fontSize: 16,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (badge != null)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: DaymarkColors.success.withValues(alpha: .16),
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Text(
+                  badge,
+                  style: TextStyle(
+                    color: DaymarkColors.success,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right, color: DaymarkColors.ink),
+          ],
+        ),
+      ),
+    ),
   );
 
   @override
@@ -384,198 +409,226 @@ class _SettingsPageState extends State<SettingsPage> {
       final schoolYear =
           settings['school_year'] ??
           '$year/${(year + 1).toString().substring(2)}';
-      return Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Einstellungen',
-              style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold),
+      final start = settings['school_start'] ?? '$year-08-01';
+      final parsedStart = isIsoDay(start) ? DateTime.parse(start) : null;
+      final startLabel = parsedStart == null
+          ? start
+          : formatGermanLongDate(parsedStart);
+      final calendar = _panel(
+        'Schuljahr & Kalender',
+        'Verwalte dein Schuljahr und wichtige Termine.',
+        [
+          _row('Aktuelles Schuljahr', Icons.school_outlined, () async {
+            final value = await _prompt(
+              'Schuljahr (JJJJ/JJ)',
+              initial: schoolYear,
+            );
+            if (value == null) return;
+            if (!_validSchoolYear(value)) {
+              if (mounted) _error('Ungültiges Schuljahr.');
+              return;
+            }
+            await _run(() => widget.store.setSetting('school_year', value));
+          }, subtitle: schoolYear),
+          _row('Standard-Startdatum', Icons.event_busy_outlined, () async {
+            final value = await _prompt(
+              'Standard-Startdatum (TT.MM.JJJJ)',
+              initial: formatGermanIsoDate(start),
+            );
+            if (value == null) return;
+            final isoDate = germanDateToIso(value);
+            if (isoDate == null) {
+              if (mounted) _error('Ungültiges Datum.');
+              return;
+            }
+            await _run(() => widget.store.setSetting('school_start', isoDate));
+          }, subtitle: startLabel),
+          _row(
+            'Schulfreie Tage',
+            Icons.event_available_outlined,
+            () => showDialog<void>(
+              context: context,
+              builder: (context) => FreeDaysDialog(store: widget.store),
             ),
-            const SizedBox(height: 24),
-            Expanded(
-              child: ListView(
-                children: [
-                  _panel('Alle Einstellungen', [
-                    _row(
-                      'Unterrichtszeiten',
-                      Icons.schedule,
-                      () => _popup(
-                        'Unterrichtszeiten',
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            for (var i = 1; i <= 8; i++)
-                              ListTile(
-                                title: Text('$i. Stunde'),
-                                subtitle: Text(
-                                  _timeLabel(
-                                    settings['period_$i'] ??
-                                        _defaultTimes[i - 1],
-                                  ),
-                                ),
-                                onTap: () => _editTime(
-                                  i,
-                                  settings['period_$i'] ?? _defaultTimes[i - 1],
-                                ),
-                              ),
-                            FilledButton(
-                              onPressed: () => _editAllTimes(settings),
-                              child: const Text('Zeiten bearbeiten'),
-                            ),
-                          ],
-                        ),
-                      ),
+          ),
+        ],
+      );
+      final app = _panel('App', 'Verwalte deine App-Einstellungen.', [
+        _row('Passwort ändern', Icons.key_outlined, _changePassword),
+        _row('App-Daten löschen', Icons.delete_outline, _delete),
+        _row(
+          'Offline-Diktat',
+          Icons.mic_none,
+          () => _popup(
+            'Offline-Diktat',
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FutureBuilder<bool>(
+                  future: _modelAvailable(),
+                  builder: (context, snapshot) => ListTile(
+                    title: const Text('Modell verfügbar'),
+                    trailing: Text(
+                      snapshot.hasError
+                          ? 'Nicht prüfbar'
+                          : snapshot.data == true
+                          ? 'OK'
+                          : 'Fehlt',
                     ),
-                    _row(
-                      'Aktuelles Schuljahr',
-                      Icons.school_outlined,
-                      () async {
-                        final value = await _prompt(
-                          'Schuljahr (JJJJ/JJ)',
-                          initial: schoolYear,
-                        );
-                        if (value == null) return;
-                        if (!_validSchoolYear(value)) {
-                          if (mounted) _error('Ungültiges Schuljahr.');
-                          return;
-                        }
-                        await _run(
-                          () => widget.store.setSetting('school_year', value),
-                        );
-                      },
-                      subtitle: schoolYear,
-                    ),
-                    _row('Standard-Startdatum', Icons.event_outlined, () async {
-                      final value = await _prompt(
-                        'Standard-Startdatum (JJJJ-MM-TT)',
-                        initial: settings['school_start'] ?? '$year-08-01',
-                      );
-                      if (value == null) return;
-                      if (!isIsoDay(value)) {
-                        if (mounted) _error('Ungültiges Datum.');
-                        return;
-                      }
-                      await _run(
-                        () => widget.store.setSetting('school_start', value),
-                      );
-                    }, subtitle: settings['school_start'] ?? '$year-08-01'),
-                    _row(
-                      'Schulfreie Tage',
-                      Icons.event_busy_outlined,
-                      () => showDialog<void>(
-                        context: context,
-                        builder: (context) =>
-                            FreeDaysDialog(store: widget.store),
-                      ),
-                    ),
-                    const ListTile(
-                      leading: Icon(Icons.lock_outline),
-                      title: Text('Lokale Datenbank verschlüsselt'),
-                      trailing: Text('Aktiv'),
-                    ),
-                    _row(
-                      'Backup exportieren',
-                      Icons.download,
-                      () => _popup(
-                        'Backup exportieren',
-                        FilledButton(
-                          onPressed: _export,
-                          child: const Text('Speicherort auswählen'),
-                        ),
-                      ),
-                    ),
-                    _row(
-                      'Backup importieren',
-                      Icons.upload,
-                      () => _popup(
-                        'Backup importieren',
-                        FilledButton(
-                          onPressed: _import,
-                          child: const Text('Backup auswählen'),
-                        ),
-                      ),
-                    ),
-                    _row('Passwort ändern', Icons.key, _changePassword),
-                    _row('App-Daten löschen', Icons.delete_outline, _delete),
-                    _row(
-                      'Offline-Diktat',
-                      Icons.mic_none,
-                      () => _popup(
-                        'Offline-Diktat',
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            FutureBuilder<bool>(
-                              future: _modelAvailable(),
-                              builder: (context, snapshot) => ListTile(
-                                title: const Text('Modell verfügbar'),
-                                trailing: Text(
-                                  snapshot.hasError
-                                      ? 'Nicht prüfbar'
-                                      : snapshot.data == true
-                                      ? 'OK'
-                                      : 'Fehlt',
-                                ),
-                              ),
-                            ),
-                            _row(
-                              'Modell verwalten',
-                              Icons.settings,
-                              _manageModel,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    _row(
-                      'Design',
-                      Icons.light_mode_outlined,
-                      () => _popup(
-                        'Design',
-                        DropdownButton<String>(
-                          value: _selectedTheme ?? settings['theme'] ?? 'light',
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'light',
-                              child: Text('Hell'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'dark',
-                              child: Text('Dunkel'),
-                            ),
-                          ],
-                          onChanged: (value) async {
-                            if (value == null) return;
-                            try {
-                              await widget.store.setSetting('theme', value);
-                              if (!mounted) return;
-                              setState(() => _selectedTheme = value);
-                              widget.onThemeChanged(
-                                value == 'dark'
-                                    ? ThemeMode.dark
-                                    : ThemeMode.light,
-                              );
-                            } catch (error) {
-                              if (mounted) _error(error);
-                            }
-                          },
-                        ),
-                      ),
-                      subtitle: (_selectedTheme ?? settings['theme']) == 'dark'
-                          ? 'Dunkel'
-                          : 'Hell',
-                    ),
-                  ]),
-                ],
+                  ),
+                ),
+                _row('Modell verwalten', Icons.settings, _manageModel),
+              ],
+            ),
+          ),
+        ),
+        _row(
+          'Design',
+          Icons.light_mode_outlined,
+          () => _popup(
+            'Design',
+            DropdownButton<String>(
+              value: _selectedTheme ?? settings['theme'] ?? 'light',
+              items: const [
+                DropdownMenuItem(value: 'light', child: Text('Hell')),
+                DropdownMenuItem(value: 'dark', child: Text('Dunkel')),
+              ],
+              onChanged: (value) async {
+                if (value == null) return;
+                try {
+                  await widget.store.setSetting('theme', value);
+                  if (!mounted) return;
+                  setState(() => _selectedTheme = value);
+                  widget.onThemeChanged(
+                    value == 'dark' ? ThemeMode.dark : ThemeMode.light,
+                  );
+                } catch (error) {
+                  if (mounted) _error(error);
+                }
+              },
+            ),
+          ),
+          subtitle: (_selectedTheme ?? settings['theme']) == 'dark'
+              ? 'Dunkel'
+              : 'Hell',
+        ),
+      ]);
+      final teaching = _panel(
+        'Unterricht',
+        'Lege die Startzeiten für deinen Unterricht fest.',
+        [
+          _row(
+            'Unterrichtszeiten',
+            Icons.access_time_outlined,
+            () => _editLessonTimes(settings),
+            subtitle: '8 Stunden · jeweils 45 Minuten',
+          ),
+        ],
+      );
+      final data = _panel(
+        'Daten & Sicherheit',
+        'Deine Daten, sicher und in deiner Hand.',
+        [
+          _row(
+            'Lokale Datenbank',
+            Icons.lock_outline,
+            () => _popup(
+              'Lokale Datenbank',
+              const Text(
+                'Deine Daten werden lokal und verschlüsselt gespeichert.',
               ),
             ),
-          ],
-        ),
+            badge: 'Aktiv',
+          ),
+          _row(
+            'Backup exportieren',
+            Icons.upload_outlined,
+            () => _popup(
+              'Backup exportieren',
+              FilledButton(
+                onPressed: _export,
+                child: const Text('Speicherort auswählen'),
+              ),
+            ),
+          ),
+          _row(
+            'Backup importieren',
+            Icons.download_outlined,
+            () => _popup(
+              'Backup importieren',
+              FilledButton(
+                onPressed: _import,
+                child: const Text('Backup auswählen'),
+              ),
+            ),
+          ),
+        ],
+      );
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 1050;
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(36, 26, 36, 30),
+            children: [
+              Text(
+                'ARBEITSBEREICH',
+                style: TextStyle(
+                  color: DaymarkColors.muted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Einstellungen',
+                style: TextStyle(
+                  color: DaymarkColors.ink,
+                  fontSize: 38,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                'Passe Daymark an deinen Schulalltag an.',
+                style: TextStyle(color: DaymarkColors.muted, fontSize: 20),
+              ),
+              const SizedBox(height: 22),
+              if (columns)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        children: [calendar, const SizedBox(height: 18), app],
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Column(
+                        children: [teaching, const SizedBox(height: 18), data],
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Column(
+                  children: [
+                    calendar,
+                    const SizedBox(height: 18),
+                    teaching,
+                    const SizedBox(height: 18),
+                    data,
+                    const SizedBox(height: 18),
+                    app,
+                  ],
+                ),
+            ],
+          );
+        },
       );
     },
   );
+
   Future<bool> _modelAvailable() async {
     final root = await getApplicationSupportDirectory();
     final installed = File(p.join(root.path, 'whisper', 'ggml-base.bin'));
@@ -590,37 +643,42 @@ class _SettingsPageState extends State<SettingsPage> {
     return await installed.exists() || await bundled.exists();
   }
 
-  String _timeLabel(String start) {
-    final parts = start.split(':').map(int.parse).toList();
-    final end = DateTime(
-      2000,
-      1,
-      1,
-      parts[0],
-      parts[1],
-    ).add(const Duration(minutes: 45));
-    return '$start – ${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
-  }
-
-  Widget _panel(String title, List<Widget> children) => Material(
-    color: DaymarkColors.surface,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(8),
-      side: BorderSide(color: DaymarkColors.border),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-          ),
-          const Divider(height: 26),
-          ...children,
-        ],
-      ),
-    ),
-  );
+  Widget _panel(String title, String description, List<Widget> children) =>
+      Container(
+        padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+        decoration: BoxDecoration(
+          color: DaymarkColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: DaymarkColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: DaymarkColors.ink,
+                fontSize: 25,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              description,
+              style: TextStyle(color: DaymarkColors.muted, fontSize: 17),
+            ),
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(7),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: DaymarkColors.border),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Column(children: children),
+              ),
+            ),
+          ],
+        ),
+      );
 }

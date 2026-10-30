@@ -19,6 +19,33 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+// GTK geometry hints use logical pixels, matching the Flutter layout.
+static void update_window_size_limits(GtkWindow* window) {
+  GdkWindow* gdk_window = gtk_widget_get_window(GTK_WIDGET(window));
+  if (gdk_window == nullptr) return;
+
+  GdkDisplay* display = gdk_window_get_display(gdk_window);
+  GdkMonitor* monitor = gdk_display_get_monitor_at_window(display, gdk_window);
+  if (monitor == nullptr) return;
+
+  GdkRectangle workarea;
+  gdk_monitor_get_workarea(monitor, &workarea);
+  GdkGeometry geometry{};
+  geometry.min_width = 900;
+  geometry.min_height = 600;
+  geometry.max_width = MAX(geometry.min_width, workarea.width);
+  geometry.max_height = MAX(geometry.min_height, workarea.height);
+  gtk_window_set_geometry_hints(window, nullptr, &geometry,
+                                static_cast<GdkWindowHints>(
+                                    GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE));
+}
+
+static gboolean window_configure_cb(GtkWidget* widget, GdkEventConfigure*,
+                                    gpointer) {
+  update_window_size_limits(GTK_WINDOW(widget));
+  return FALSE;
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
@@ -53,6 +80,8 @@ static void my_application_activate(GApplication* application) {
   }
 
   gtk_window_set_default_size(window, 1280, 720);
+  g_signal_connect(window, "configure-event", G_CALLBACK(window_configure_cb),
+                   nullptr);
   g_autofree gchar* executable = g_file_read_link("/proc/self/exe", nullptr);
   if (executable != nullptr) {
     g_autofree gchar* directory = g_path_get_dirname(executable);
@@ -80,6 +109,7 @@ static void my_application_activate(GApplication* application) {
   g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
                            self);
   gtk_widget_realize(GTK_WIDGET(view));
+  update_window_size_limits(window);
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 

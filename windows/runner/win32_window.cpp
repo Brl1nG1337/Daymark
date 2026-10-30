@@ -30,8 +30,6 @@ constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme"
 // compact sidebar and the responsive content layouts.
 constexpr int kMinWindowWidth = 900;
 constexpr int kMinWindowHeight = 600;
-constexpr int kMaxWindowWidth = 1600;
-constexpr int kMaxWindowHeight = 1000;
 
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
@@ -191,14 +189,15 @@ Win32Window::MessageHandler(HWND hwnd,
       const UINT dpi = GetDpiForWindow(hwnd);
       bounds->ptMinTrackSize.x = MulDiv(kMinWindowWidth, dpi, 96);
       bounds->ptMinTrackSize.y = MulDiv(kMinWindowHeight, dpi, 96);
-      bounds->ptMaxTrackSize.x = MulDiv(kMaxWindowWidth, dpi, 96);
-      bounds->ptMaxTrackSize.y = MulDiv(kMaxWindowHeight, dpi, 96);
-      // Preserve Windows' smaller maximize size on laptop displays.
-      if (bounds->ptMaxSize.x > bounds->ptMaxTrackSize.x) {
-        bounds->ptMaxSize.x = bounds->ptMaxTrackSize.x;
-      }
-      if (bounds->ptMaxSize.y > bounds->ptMaxTrackSize.y) {
-        bounds->ptMaxSize.y = bounds->ptMaxTrackSize.y;
+      // Limit resizing to the display containing the window. Windows keeps its
+      // own maximized work-area bounds so the taskbar remains visible.
+      MONITORINFO monitor_info{sizeof(MONITORINFO)};
+      const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+      if (GetMonitorInfo(monitor, &monitor_info)) {
+        bounds->ptMaxTrackSize.x =
+            monitor_info.rcMonitor.right - monitor_info.rcMonitor.left;
+        bounds->ptMaxTrackSize.y =
+            monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top;
       }
       return 0;
     }

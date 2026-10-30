@@ -28,9 +28,7 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
     final body = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          note == null ? 'Tagesnotiz hinzufügen' : 'Tagesnotiz bearbeiten',
-        ),
+        title: Text(note == null ? 'Eintrag hinzufügen' : 'Eintrag bearbeiten'),
         content: SizedBox(
           width: 440,
           child: TextFormField(
@@ -76,7 +74,7 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Tagesnotiz löschen?'),
+        title: const Text('Eintrag löschen?'),
         content: const Text('Die Notiz wird dauerhaft entfernt.'),
         actions: [
           TextButton(
@@ -105,7 +103,7 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Tagesnotiz konnte nicht gespeichert werden: $error'),
+            content: Text('Eintrag konnte nicht gespeichert werden: $error'),
           ),
         );
       }
@@ -125,19 +123,26 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(22, 22, 16, 16),
+          padding: const EdgeInsets.fromLTRB(20, 20, 12, 14),
           child: Row(
             children: [
               const Expanded(
                 child: Text(
-                  'Tagesnotizen',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700),
+                  'Vor- & Nachbereitung',
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
                 ),
               ),
-              IconButton(
-                onPressed: _saving ? null : _edit,
-                icon: const Icon(Icons.add),
-                tooltip: 'Tagesnotiz hinzufügen',
+              Tooltip(
+                message: 'Eintrag hinzufügen',
+                child: TextButton.icon(
+                  onPressed: _saving ? null : _edit,
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: const Icon(Icons.add, size: 20),
+                  label: const Text('Eintrag'),
+                ),
               ),
             ],
           ),
@@ -152,7 +157,7 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
                   child: TextButton(
                     onPressed: _reload,
                     child: const Text(
-                      'Notizen konnten nicht geladen werden · Wiederholen',
+                      'Einträge konnten nicht geladen werden · Wiederholen',
                     ),
                   ),
                 );
@@ -175,7 +180,7 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Noch keine Notizen für diesen Tag.',
+                          'Noch keine Einträge für diesen Tag.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: DaymarkColors.muted),
                         ),
@@ -183,7 +188,7 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
                         OutlinedButton.icon(
                           onPressed: _saving ? null : _edit,
                           icon: const Icon(Icons.add),
-                          label: const Text('Notiz hinzufügen'),
+                          label: const Text('Eintrag hinzufügen'),
                         ),
                       ],
                     ),
@@ -197,24 +202,31 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
                 itemBuilder: (context, index) {
                   final note = notes[index];
                   return Container(
+                    constraints: const BoxConstraints(minHeight: 66),
                     decoration: BoxDecoration(
                       color: DaymarkColors.background,
                       border: Border.all(color: DaymarkColors.border),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 6, 12),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.only(top: 9),
-                              child: Text(note.body),
+                              child: Text(
+                                note.body,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  height: 1.35,
+                                ),
+                              ),
                             ),
                           ),
                           PopupMenuButton<String>(
-                            tooltip: 'Notizaktionen',
+                            tooltip: 'Eintragsaktionen',
                             enabled: !_saving,
                             onSelected: (action) =>
                                 action == 'edit' ? _edit(note) : _delete(note),

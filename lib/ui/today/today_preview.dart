@@ -66,7 +66,7 @@ Widget todayDesktopPreview() {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Tagesnotizen',
+                        'Vor- & Nachbereitung',
                         style: TextStyle(
                           fontSize: 26,
                           fontWeight: FontWeight.w700,

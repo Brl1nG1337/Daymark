@@ -6,6 +6,7 @@ import '../../data/daymark_store.dart';
 import '../../data/today_repository.dart';
 import '../../domain/today_schedule.dart';
 import '../day_notes/day_notes_panel.dart';
+import 'desktop_date_picker_dialog.dart';
 import 'today_view.dart';
 
 /// Owns loading and calendar navigation; rendering stays database independent.
@@ -59,14 +60,11 @@ class _TodayPageState extends State<TodayPage> {
   }
 
   Future<void> _pickDate() async {
-    final date = await showDatePicker(
+    final date = await showDaymarkDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(1900),
       lastDate: DateTime(2200, 12, 31),
-      helpText: 'Datum auswählen',
-      cancelText: 'Abbrechen',
-      confirmText: 'Übernehmen',
     );
     if (date != null && mounted) _select(date);
   }

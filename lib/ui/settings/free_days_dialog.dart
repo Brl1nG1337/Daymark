@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/daymark_store.dart';
-import '../../domain/iso_day.dart';
+import '../../domain/date_formatting.dart';
 
 class FreeDaysDialog extends StatefulWidget {
   const FreeDaysDialog({super.key, required this.store});
@@ -19,7 +19,11 @@ class _FreeDaysDialogState extends State<FreeDaysDialog> {
       (row['day'] as String, row['label'] as String),
   ];
 
-  void _reload() => setState(() => _days = _load());
+  void _reload() {
+    setState(() {
+      _days = _load();
+    });
+  }
 
   Future<void> _add() async {
     var day = '';
@@ -33,7 +37,7 @@ class _FreeDaysDialogState extends State<FreeDaysDialog> {
           children: [
             TextFormField(
               decoration: const InputDecoration(
-                labelText: 'Datum (JJJJ-MM-TT)',
+                labelText: 'Datum (TT.MM.JJJJ)',
               ),
               onChanged: (value) => day = value,
             ),
@@ -56,13 +60,14 @@ class _FreeDaysDialogState extends State<FreeDaysDialog> {
       ),
     );
     if (!mounted || save != true) return;
-    if (!isIsoDay(day) || label.trim().isEmpty) {
+    final isoDay = germanDateToIso(day);
+    if (isoDay == null || label.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Datum oder Bezeichnung ungültig.')),
       );
       return;
     }
-    await _run(() => widget.store.addFreeDay(day, label));
+    await _run(() => widget.store.addFreeDay(isoDay, label));
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -104,7 +109,7 @@ class _FreeDaysDialogState extends State<FreeDaysDialog> {
               ),
               for (final (day, label) in snapshot.data!)
                 ListTile(
-                  title: Text(day),
+                  title: Text(formatGermanIsoDate(day)),
                   subtitle: Text(label),
                   trailing: IconButton(
                     tooltip: 'Löschen',

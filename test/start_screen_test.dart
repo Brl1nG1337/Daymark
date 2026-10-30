@@ -134,4 +134,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Bemerkung speichern'), findsOneWidget);
   });
+
+  testWidgets('a started lesson can be reset from the detail header', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await DaymarkStore.inMemory();
+    addTearDown(store.close);
+    await store.addClass('3a');
+    await store.addStudent(1, 'Erika', 'Muster');
+    final monday = DateTime(2026, 5, 11);
+    await store.db.customStatement('UPDATE enrollments SET start_date=?', [
+      dayKey(monday.subtract(const Duration(days: 7))),
+    ]);
+    await store.addSlot(1, 'Mathe', 1, 2, '09:00', '2026-01-01');
+    final slot = (await store.slots()).single;
+    final id = await store.openLesson(slot, dayKey(monday));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LessonDetailPage(
+            store: store,
+            lesson: TodayLesson(
+              slotId: slot['id'] as int,
+              classId: 1,
+              className: '3a',
+              subject: 'Mathe',
+              period: 2,
+              day: monday,
+              startTime: '09:00',
+              lessonId: id,
+            ),
+            onBack: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Stundenstart rückgängig machen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stundenstart rückgängig machen?'), findsOneWidget);
+    await tester.tap(find.text('Start rückgängig'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Geplante Stunde'), findsOneWidget);
+    expect(find.text('Stunde starten'), findsOneWidget);
+    expect((await store.weekEntries(monday)).single['lesson_id'], isNull);
+  });
 }

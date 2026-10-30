@@ -103,6 +103,50 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
     );
   }
 
+  Future<void> _undoStart() async {
+    if (_busy || !await _mayLeave() || !mounted) return;
+    await _cancelRecording();
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Stundenstart rückgängig machen?'),
+        content: const Text(
+          'Anwesenheit, Stundeninhalt und Bemerkungen dieser Stunde werden gelöscht.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Start rückgängig'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await widget.store.undoLessonStart(_lessonId!);
+      if (!mounted) return;
+      setState(() {
+        _lessonId = null;
+        _data = null;
+        _tab = _DetailTab.attendance;
+        _selectedStudentId = null;
+        _selectedNoteId = null;
+        _noteController.clear();
+        _savedNoteText = null;
+      });
+    } catch (error) {
+      if (mounted) _showError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _setAttendance(int studentId, String status) =>
       _change(() => widget.store.setAttendance(_lessonId!, studentId, status));
 
@@ -360,6 +404,7 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
             _Header(
               lesson: data,
               onBack: _back,
+              onUndoStart: !data.completed && !_busy ? _undoStart : null,
               onComplete: data.completed || _busy
                   ? null
                   : () => _complete(data),
@@ -465,11 +510,13 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.lesson,
     required this.onBack,
+    this.onUndoStart,
     this.onComplete,
     this.onReopen,
   });
   final _LessonDetailData lesson;
   final VoidCallback onBack;
+  final VoidCallback? onUndoStart;
   final VoidCallback? onComplete;
   final VoidCallback? onReopen;
   @override
@@ -481,6 +528,7 @@ class _Header extends StatelessWidget {
     startTime: lesson.startTime,
     completed: lesson.completed,
     onBack: onBack,
+    onUndoStart: onUndoStart,
     onComplete: onComplete,
     onReopen: onReopen,
   );
@@ -513,13 +561,14 @@ class _HeaderLayout extends StatelessWidget {
     required this.onBack,
     this.onComplete,
     this.onReopen,
+    this.onUndoStart,
   });
   final String className, subject, day;
   final int period;
   final String? startTime;
   final bool completed;
   final VoidCallback onBack;
-  final VoidCallback? onComplete, onReopen;
+  final VoidCallback? onComplete, onReopen, onUndoStart;
   @override
   Widget build(BuildContext context) {
     final date = DateTime.parse(day);
@@ -607,6 +656,14 @@ class _HeaderLayout extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 26),
+              ],
+              if (onUndoStart != null) ...[
+                IconButton(
+                  onPressed: onUndoStart,
+                  tooltip: 'Stundenstart rückgängig machen',
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+                const SizedBox(width: 8),
               ],
               if (onComplete != null)
                 FilledButton(
@@ -840,7 +897,7 @@ class _AttendanceHeadings extends StatelessWidget {
     child: Row(
       children: [
         SizedBox(width: 28, child: Text('#')),
-        Expanded(child: Text('Schüler/in')),
+        Expanded(child: Text('Schüler')),
         SizedBox(width: 46, child: Text('A')),
         SizedBox(width: 46, child: Text('F')),
         SizedBox(width: 46, child: Text('E')),
@@ -1049,7 +1106,7 @@ class _NoteEditor extends StatelessWidget {
               textAlignVertical: TextAlignVertical.top,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
-                hintText: 'Bemerkung zur Schülerin oder zum Schüler',
+                hintText: 'Bemerkung zum Schüler',
               ),
             ),
           ),
@@ -1087,7 +1144,7 @@ class _EmptyNote extends StatelessWidget {
   Widget build(BuildContext context) => _Panel(
     child: Center(
       child: Text(
-        'Schüler/in für eine Bemerkung auswählen.',
+        'Schüler für eine Bemerkung auswählen.',
         textAlign: TextAlign.center,
         style: TextStyle(color: DaymarkColors.muted),
       ),

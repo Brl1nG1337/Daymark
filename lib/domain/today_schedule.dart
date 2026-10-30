@@ -1,3 +1,5 @@
+import 'date_formatting.dart';
+
 /// A scheduled lesson independent of database rows and Flutter widgets.
 class TodayLesson {
   const TodayLesson({
@@ -63,32 +65,7 @@ class TodaySchedule {
 DateTime calendarDay(DateTime date, [int offset = 0]) =>
     DateTime(date.year, date.month, date.day + offset);
 
-String germanDayLabel(DateTime date) {
-  const weekdays = [
-    'Montag',
-    'Dienstag',
-    'Mittwoch',
-    'Donnerstag',
-    'Freitag',
-    'Samstag',
-    'Sonntag',
-  ];
-  const months = [
-    'Januar',
-    'Februar',
-    'März',
-    'April',
-    'Mai',
-    'Juni',
-    'Juli',
-    'August',
-    'September',
-    'Oktober',
-    'November',
-    'Dezember',
-  ];
-  return '${weekdays[date.weekday - 1]}, ${date.day}. ${months[date.month - 1]}';
-}
+String germanDayLabel(DateTime date) => formatGermanDayLabel(date);
 
 String lessonTime(DateTime? time) => time == null
     ? '–'

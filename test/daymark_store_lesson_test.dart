@@ -80,5 +80,34 @@ void main() {
         expect((await store.lesson(id))['completed'], 0);
       },
     );
+
+    test('starting a lesson can be undone with its dependent data', () async {
+      final monday = DateTime(2026, 11, 2);
+      final slot = (await store.weekEntries(monday)).single;
+      final id = await store.openLesson(slot, '2026-11-02');
+      await store.setAttendance(id, 1, 'absent');
+      await store.addNote(id, 1, 'Testnotiz');
+      await store.updateLessonDetails(id, 'Brüche', 'Übungen', 'Seite 4');
+
+      await store.undoLessonStart(id);
+
+      expect((await store.weekEntries(monday)).single['lesson_id'], isNull);
+      expect(await store.attendance(id), isEmpty);
+      expect(await store.notes(id), isEmpty);
+      expect(
+        await store.rows('SELECT * FROM lessons WHERE id=?', [id]),
+        isEmpty,
+      );
+    });
+
+    test('an already completed lesson cannot be reset', () async {
+      final monday = DateTime(2026, 11, 2);
+      final slot = (await store.weekEntries(monday)).single;
+      final id = await store.openLesson(slot, '2026-11-02');
+      await store.complete(id);
+
+      expect(() => store.undoLessonStart(id), throwsStateError);
+      expect((await store.lesson(id))['completed'], 1);
+    });
   });
 }

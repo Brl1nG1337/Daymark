@@ -1,13 +1,62 @@
 import 'package:daymark/data/daymark_store.dart';
 import 'package:daymark/data/today_repository.dart';
 import 'package:daymark/domain/today_schedule.dart';
+import 'package:daymark/ui/day_notes/day_notes_panel.dart';
 import 'package:daymark/ui/daymark_app.dart';
 import 'package:daymark/ui/theme/daymark_theme.dart';
+import 'package:daymark/ui/today/desktop_date_picker_dialog.dart';
+import 'package:daymark/ui/today/today_lesson_row.dart';
 import 'package:daymark/ui/today/today_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('holiday empty state is clear at desktop content width', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1054, 717);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await DaymarkStore.inMemory();
+    addTearDown(store.close);
+    final date = DateTime(2026, 10, 30);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: daymarkTheme(),
+        home: Scaffold(
+          body: TodayView(
+            date: date,
+            now: DateTime(2026, 10, 30, 10),
+            schedule: TodaySchedule(lessons: [], reason: 'Herbstferien'),
+            notesPanel: DayNotesPanel(store: store, date: date),
+            onPrevious: () {},
+            onNext: () {},
+            onToday: () {},
+            onPickDate: () {},
+            onOpenLesson: (_) {},
+            onRetry: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Herbstferien'), findsOneWidget);
+    expect(
+      find.text('Für diesen Tag ist kein Unterricht geplant.'),
+      findsOneWidget,
+    );
+    expect(find.text('Vor- & Nachbereitung'), findsOneWidget);
+    expect(find.text('Eintrag'), findsOneWidget);
+    final todayButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Heute'),
+    );
+    expect(todayButton.onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('day notes persist for past and future dates', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1;
@@ -24,7 +73,7 @@ void main() {
     await tester.pumpAndSettle();
 
     Future<void> addNote(String text) async {
-      await tester.tap(find.byTooltip('Tagesnotiz hinzufügen'));
+      await tester.tap(find.byTooltip('Eintrag hinzufügen'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextFormField, 'Notiz'), text);
       await tester.tap(find.text('Speichern'));
@@ -44,7 +93,7 @@ void main() {
       (await store.dayNotes('2027-01-01')).single['body'],
       'Neujahrsplanung',
     );
-    await tester.tap(find.byTooltip('Notizaktionen'));
+    await tester.tap(find.byTooltip('Eintragsaktionen'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bearbeiten').last);
     await tester.pumpAndSettle();
@@ -58,11 +107,11 @@ void main() {
       (await store.dayNotes('2027-01-01')).single['body'],
       'Neujahrsplanung aktualisiert',
     );
-    await tester.tap(find.byTooltip('Notizaktionen'));
+    await tester.tap(find.byTooltip('Eintragsaktionen'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Löschen').last);
     await tester.pumpAndSettle();
-    expect(find.text('Tagesnotiz löschen?'), findsOneWidget);
+    expect(find.text('Eintrag löschen?'), findsOneWidget);
     await tester.tap(find.text('Löschen').last);
     await tester.pumpAndSettle();
     expect(await store.dayNotes('2027-01-01'), isEmpty);
@@ -119,6 +168,47 @@ void main() {
     expect(completed.isCurrent(DateTime(2026, 5, 12, 10)), isFalse);
   });
 
+  testWidgets('desktop lesson rows use the compact list height', (
+    tester,
+  ) async {
+    final date = DateTime(2026, 5, 12);
+    final lesson = TodayLesson(
+      slotId: 1,
+      classId: 1,
+      className: '8b',
+      subject: 'Englisch',
+      period: 3,
+      day: date,
+      startTime: '09:55',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: daymarkTheme(),
+        home: Scaffold(
+          body: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TodayLessonRow(
+                lesson: lesson,
+                now: DateTime(2026, 5, 12, 8),
+                first: true,
+                last: true,
+                onOpen: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byType(TodayLessonRow)).height,
+      TodayLessonRow.minimumHeight,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'daily repository includes weekends, completion and free-day labels',
     () async {
@@ -161,14 +251,19 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Donnerstag, 31. Dezember'), findsOneWidget);
-    expect(find.text('Tagesnotizen'), findsOneWidget);
+    expect(find.text('Vor- & Nachbereitung'), findsOneWidget);
     await tester.tap(find.byTooltip('Nächster Tag'));
     await tester.pumpAndSettle();
     expect(find.text('Freitag, 1. Januar'), findsOneWidget);
     expect(find.text('2. Stunde'), findsOneWidget);
     await tester.tap(find.text('Freitag, 1. Januar'));
     await tester.pumpAndSettle();
-    expect(find.byType(DatePickerDialog), findsOneWidget);
+    expect(find.byType(DesktopDatePickerDialog), findsOneWidget);
+    expect(find.text('Freitag, 1. Januar 2027'), findsOneWidget);
+    expect(find.text('01.01.2027'), findsOneWidget);
+    final dialogSize = tester.getSize(find.byType(DesktopDatePickerDialog));
+    expect(dialogSize.width, greaterThanOrEqualTo(800));
+    expect(dialogSize.height, greaterThanOrEqualTo(580));
     await tester.tap(find.text('Abbrechen'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Voriger Tag'));
@@ -179,6 +274,46 @@ void main() {
     expect(find.text(germanDayLabel(DateTime.now())), findsOneWidget);
     // Dispose the screen's timer before the test ends.
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('date picker remains usable in a narrow window', (tester) async {
+    tester.view.physicalSize = const Size(620, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: daymarkTheme(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () async {
+                  await showDaymarkDatePicker(
+                    context: context,
+                    initialDate: DateTime(2026, 10, 30),
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime(2200, 12, 31),
+                  );
+                },
+                child: const Text('Kalender öffnen'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Kalender öffnen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Freitag, 30. Oktober 2026'), findsOneWidget);
+    expect(find.text('30.10.2026'), findsOneWidget);
+    expect(find.byType(CalendarDatePicker), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('narrow layout scrolls, opens lessons, and renders errors', (

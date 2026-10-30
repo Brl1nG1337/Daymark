@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../data/daymark_store.dart';
+import '../../domain/date_formatting.dart';
 import '../../domain/attendance_summary.dart';
 import '../../domain/today_schedule.dart';
 import '../theme/daymark_theme.dart';
+
+const _rosterArrowColumnWidth = 40.0;
 
 class ClassesPage extends StatefulWidget {
   const ClassesPage({
@@ -194,7 +197,7 @@ class _ClassesPageState extends State<ClassesPage> {
                     controller: _searchController,
                     decoration: const InputDecoration(
                       prefixIcon: Icon(Icons.search),
-                      hintText: 'Schüler/in suchen',
+                      hintText: 'Schüler suchen',
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (value) => setState(() {
@@ -240,26 +243,12 @@ class _ClassesPageState extends State<ClassesPage> {
                   ? _searchResults()
                   : selected == null
                   ? const Center(child: Text('Noch keine Klasse vorhanden.'))
-                  : LayoutBuilder(
-                      builder: (context, constraints) {
-                        final info = _classInfo(selected);
-                        final roster = _roster(selected);
-                        return constraints.maxWidth < 850
-                            ? ListView(
-                                children: [
-                                  SizedBox(height: 270, child: info),
-                                  const SizedBox(height: 8),
-                                  SizedBox(height: 520, child: roster),
-                                ],
-                              )
-                            : Row(
-                                children: [
-                                  SizedBox(width: 340, child: info),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: roster),
-                                ],
-                              );
-                      },
+                  : Column(
+                      children: [
+                        _classInfo(selected),
+                        const SizedBox(height: 10),
+                        Expanded(child: _roster(selected)),
+                      ],
                     ),
             ),
           ],
@@ -277,7 +266,7 @@ class _ClassesPageState extends State<ClassesPage> {
         return const Center(child: CircularProgressIndicator());
       }
       if (snapshot.data!.isEmpty) {
-        return const Center(child: Text('Keine Schüler/innen gefunden.'));
+        return const Center(child: Text('Keine Schüler gefunden.'));
       }
       return _Card(
         child: ListView(
@@ -303,28 +292,33 @@ class _ClassesPageState extends State<ClassesPage> {
   );
   Widget _classInfo(_ClassItem item) => _Card(
     child: Padding(
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Row(
         children: [
-          Text(
-            'Klasse ${item.name}',
-            style: TextStyle(fontSize: 27, fontWeight: FontWeight.bold),
+          Icon(Icons.groups_outlined, color: DaymarkColors.primary),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Klasse ${item.name}',
+                  style: const TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Schuljahr $_schoolYear/${(_schoolYear + 1).toString().substring(2)}',
+                  style: TextStyle(color: DaymarkColors.muted),
+                ),
+              ],
+            ),
           ),
-          const Divider(height: 30),
-          Text(
-            'Schuljahr $_schoolYear/${(_schoolYear + 1).toString().substring(2)}',
-          ),
-          const SizedBox(height: 12),
-          TextButton.icon(
+          OutlinedButton.icon(
             onPressed: () => _renameClass(item),
-            icon: Icon(Icons.edit_outlined),
+            icon: const Icon(Icons.edit_outlined, size: 18),
             label: const Text('Klasse bearbeiten'),
-          ),
-          TextButton.icon(
-            onPressed: () => _addStudent(item),
-            icon: Icon(Icons.add),
-            label: const Text('+ Schüler/in'),
           ),
         ],
       ),
@@ -373,31 +367,58 @@ class _ClassesPageState extends State<ClassesPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Schülerinnen und Schüler (${snapshot.data!.students.length})',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Schüler (${snapshot.data!.students.length})',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => _addStudent(item),
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    label: const Text('Schüler hinzufügen'),
+                  ),
+                ],
               ),
               const Divider(height: 25),
               LayoutBuilder(
                 builder: (context, constraints) => constraints.maxWidth < 740
                     ? const SizedBox.shrink()
-                    : Row(
-                        children: [
-                          Expanded(flex: 3, child: _sortButton('Name', 'name')),
-                          Expanded(
-                            child: _sortButton('Fehlstunden', 'absences'),
+                    : SizedBox(
+                        height: 42,
+                        child: _RosterColumns(
+                          name: _sortButton(
+                            'Name',
+                            'name',
+                            key: const ValueKey('roster-heading-name'),
+                            alignment: Alignment.centerLeft,
                           ),
-                          Expanded(child: _sortButton('Verspätet', 'lates')),
-                          Expanded(
-                            flex: 2,
-                            child: _sortButton('Letzter Eintrag', 'last'),
+                          absences: _sortButton(
+                            'Fehlstunden',
+                            'absences',
+                            key: const ValueKey('roster-heading-absences'),
                           ),
-                        ],
+                          lates: _sortButton(
+                            'Verspätet',
+                            'lates',
+                            key: const ValueKey('roster-heading-lates'),
+                          ),
+                          lastEntry: _sortButton(
+                            'Letzter Eintrag',
+                            'last',
+                            key: const ValueKey('roster-heading-last-entry'),
+                          ),
+                        ),
                       ),
               ),
               Expanded(
                 child: students.isEmpty
-                    ? const Center(child: Text('Keine Schüler/innen gefunden.'))
+                    ? const Center(child: Text('Keine Schüler gefunden.'))
                     : ListView.builder(
                         itemCount: students.length,
                         itemBuilder: (context, index) {
@@ -420,35 +441,59 @@ class _ClassesPageState extends State<ClassesPage> {
                                 : InkWell(
                                     onTap: () =>
                                         setState(() => _studentId = student.id),
-                                    child: SizedBox(
-                                      height: 46,
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            flex: 3,
-                                            child: Text(
-                                              '${student.last}, ${student.first}',
+                                    child: Container(
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: DaymarkColors.border,
+                                          ),
+                                        ),
+                                      ),
+                                      child: _RosterColumns(
+                                        name: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                          ),
+                                          child: Text(
+                                            '${student.last}, ${student.first}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        absences: Center(
+                                          child: Text(
+                                            '${roster.absences[student.id] ?? 0}',
+                                            key: ValueKey(
+                                              'roster-${student.id}-absences',
                                             ),
                                           ),
-                                          Expanded(
-                                            child: Text(
-                                              '${roster.absences[student.id] ?? 0}',
+                                        ),
+                                        lates: Center(
+                                          child: Text(
+                                            '${roster.lates[student.id] ?? 0}',
+                                            key: ValueKey(
+                                              'roster-${student.id}-lates',
                                             ),
                                           ),
-                                          Expanded(
-                                            child: Text(
-                                              '${roster.lates[student.id] ?? 0}',
+                                        ),
+                                        lastEntry: Center(
+                                          child: Text(
+                                            roster.lastEntries[student.id] ==
+                                                    null
+                                                ? '–'
+                                                : formatGermanIsoDate(
+                                                    roster.lastEntries[student
+                                                        .id]!,
+                                                  ),
+                                            key: ValueKey(
+                                              'roster-${student.id}-last-entry',
                                             ),
                                           ),
-                                          Expanded(
-                                            flex: 2,
-                                            child: Text(
-                                              roster.lastEntries[student.id] ??
-                                                  '–',
-                                            ),
-                                          ),
-                                          const Icon(Icons.chevron_right),
-                                        ],
+                                        ),
+                                        trailing: const Icon(
+                                          Icons.chevron_right,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -462,17 +507,27 @@ class _ClassesPageState extends State<ClassesPage> {
       );
     },
   );
-  Widget _sortButton(String label, String key) => TextButton(
+  Widget _sortButton(
+    String label,
+    String sortKey, {
+    Key? key,
+    AlignmentGeometry alignment = Alignment.center,
+  }) => TextButton(
+    key: key,
+    style: TextButton.styleFrom(
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+    ),
     onPressed: () => setState(() {
-      if (_sort == key) {
+      if (_sort == sortKey) {
         _descending = !_descending;
       } else {
-        _sort = key;
+        _sort = sortKey;
         _descending = false;
       }
     }),
     child: Text(
-      '$label ${_sort == key ? (_descending ? '↓' : '↑') : ''}',
+      '$label ${_sort == sortKey ? (_descending ? '↓' : '↑') : ''}',
       overflow: TextOverflow.ellipsis,
     ),
   );
@@ -539,7 +594,7 @@ class _StudentDetailPageState extends State<_StudentDetailPage> {
     final student = students
         .where((row) => row['id'] == widget.studentId)
         .firstOrNull;
-    if (student == null) throw StateError('Schüler/in nicht gefunden.');
+    if (student == null) throw StateError('Schüler nicht gefunden.');
     return _StudentHistory(
       _Student(
         widget.studentId,
@@ -658,7 +713,7 @@ class _StudentDetailPageState extends State<_StudentDetailPage> {
               }
             },
             icon: Icon(Icons.edit_outlined),
-            label: const Text('Schüler/in bearbeiten'),
+            label: const Text('Schüler bearbeiten'),
           ),
           const SizedBox(height: 18),
           Expanded(
@@ -686,7 +741,7 @@ class _StudentDetailPageState extends State<_StudentDetailPage> {
                                     for (final row in notes)
                                       ListTile(
                                         title: Text(
-                                          '${row.day} · ${row.period}. Stunde · ${row.subject}',
+                                          '${formatGermanIsoDate(row.day)} · ${row.period}. Stunde · ${row.subject}',
                                         ),
                                         subtitle: Text(row.body),
                                         trailing: PopupMenuButton<String>(
@@ -731,7 +786,7 @@ class _StudentDetailPageState extends State<_StudentDetailPage> {
                                     for (final row in attendance)
                                       ListTile(
                                         title: Text(
-                                          '${row.day} · ${row.period}. ${row.subject}',
+                                          '${formatGermanIsoDate(row.day)} · ${row.period}. ${row.subject}',
                                         ),
                                         subtitle: Text(row.status),
                                       ),
@@ -777,6 +832,33 @@ class _Card extends StatelessWidget {
       side: BorderSide(color: DaymarkColors.border),
     ),
     child: child,
+  );
+}
+
+class _RosterColumns extends StatelessWidget {
+  const _RosterColumns({
+    required this.name,
+    required this.absences,
+    required this.lates,
+    required this.lastEntry,
+    this.trailing,
+  });
+
+  final Widget name;
+  final Widget absences;
+  final Widget lates;
+  final Widget lastEntry;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(flex: 3, child: name),
+      Expanded(child: absences),
+      Expanded(child: lates),
+      Expanded(flex: 2, child: lastEntry),
+      SizedBox(width: _rosterArrowColumnWidth, child: trailing),
+    ],
   );
 }
 

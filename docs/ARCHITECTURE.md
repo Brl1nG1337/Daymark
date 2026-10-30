@@ -4,10 +4,13 @@ Daymark ist eine lokale Flutter-Desktop-App. Produktionsziel ist Windows;
 Linux dient zusätzlich der Entwicklung. Die Anwendung benötigt zur Laufzeit
 keinen Netzwerkzugriff.
 
-Der Windows-Runner begrenzt das äußere Fenster über `WM_GETMINMAXINFO` auf
-900 × 600 bis 1600 × 1000 logische Pixel. Die Grenzen werden mit der aktuellen
-Fenster-DPI in physische Pixel umgerechnet. Das Startfenster bleibt 1280 × 720.
-Die Linux-Entwicklungsoberfläche hat diese nativen Windows-Grenzen nicht.
+Windows begrenzt das äußere Fenster über `WM_GETMINMAXINFO` auf mindestens
+900 × 600 logische Pixel und höchstens die Größe des aktuellen Monitors.
+Die Mindestgröße wird mit der Fenster-DPI in physische Pixel umgerechnet;
+Maximieren folgt dem verfügbaren Arbeitsbereich von Windows. Linux setzt
+GTK-Geometriegrenzen mit 900 × 600 logischen Pixeln als Minimum und dem
+Arbeitsbereich des aktuellen Monitors als Maximum. Das Startfenster bleibt
+1280 × 720.
 
 ## Schichten und Abhängigkeiten
 
@@ -20,8 +23,10 @@ Die Linux-Entwicklungsoberfläche hat diese nativen Windows-Grenzen nicht.
 - `lib/ui/`: Darstellung und Benutzerinteraktion.
   `TodayPage` besitzt Ladezustand, ausgewähltes Datum und Uhr-Timer.
   `TodayView` und seine Zeilen erhalten ausschließlich Daten und Callbacks.
+  `desktop_date_picker_dialog.dart` kapselt die responsive, für Desktopfenster
+  vergrößerte Datumsauswahl ohne Persistenzzugriff.
   `ui/day_notes/` besitzt den unabhängigen Lade- und Bearbeitungszustand der
-  Tagesnotizen für das ausgewählte Datum.
+  Einträge zur Vor- und Nachbereitung für das ausgewählte Datum.
   `DaymarkSidebar` und `theme/daymark_theme.dart` definieren den gemeinsamen Rahmen.
   `ui/classes/`, `ui/planning/` und `ui/settings/` kapseln die weiteren
   Mockup-Screens. `ui/lesson_detail/lesson_detail_page.dart` kapselt den Stundendetail-Screen
@@ -40,8 +45,14 @@ SQL und Datenbank-Maps gehören nicht in neue Darstellungswidgets. Der App-Rahme
 SQLite3MultipleCiphers. Das Passwort entsperrt die Datenbank im lokalen
 App-Support-Verzeichnis. Es gibt keine Passwortwiederherstellung.
 Schreibvorgänge mit mehreren zusammengehörigen Schritten sind transaktional.
+Das Rückgängigmachen eines Stundenstarts entfernt Bemerkungen, Anwesenheiten
+und die noch nicht abgeschlossene Stunde gemeinsam in einer Transaktion.
 SQL-Werte werden parametrisiert. Schemaänderungen müssen bestehende Dateien
 weiter öffnen können; `CREATE TABLE IF NOT EXISTS` allein ist keine Migration.
+Kalendertage bleiben in der Persistenz und an bestehenden Store-Schnittstellen
+kanonisch als `JJJJ-MM-TT` gespeichert. Die UI formatiert und validiert sie an
+der Schichtengrenze zentral als deutsches `TT.MM.JJJJ`; so ändern sich weder
+Sortierreihenfolge noch vorhandene Nutzerdaten.
 
 Migrationen von Drift-`user_version` 1, 2 und 3 auf 4 laufen transaktional.
 Fehlende Stundenfelder, die Einstellungstabelle und `day_notes` werden ergänzt; vorhandene
@@ -79,7 +90,13 @@ Passwort und Integrität vor dem Ersetzen und behält die vorherige Datei als
 verschlüsselte `.before-import`-Kopie bis zur Löschung der App-Daten.
 Passwortwechsel nutzt SQLite3MultipleCiphers `rekey` und prüft den neuen
 Schlüssel anschließend.
+Nach erfolgreichen Einstellungsaktionen, einschließlich Backup-Export, wird
+die Einstellungsansicht mit einem synchronen `setState`-Callback neu geladen;
+das asynchrone Laden selbst läuft außerhalb des Callbacks.
 
-Die Einstellungen zeigen eine zentrale Liste; `ui/settings/free_days_dialog.dart`
+Die Einstellungen zeigen responsive, thematisch gruppierte Karten; `ui/settings/free_days_dialog.dart`
 verwaltet eigene schulfreie Tage über den bestehenden Store. Das Linux-Fenster
 lädt sein Icon aus dem Flutter-Asset-Bundle; Windows verwendet die ICO-Ressource.
+`ui/settings/lesson_times_dialog.dart` kapselt Formularzustand, Validierung und
+Fehleranzeige der gemeinsamen Unterrichtszeiten-Bearbeitung; der Store schreibt
+die acht überschneidungsfrei geprüften Startzeiten in einer Transaktion.

@@ -276,6 +276,26 @@ class DaymarkStore {
     'UPDATE lessons SET completed=0 WHERE id=?',
     [lessonId],
   );
+  Future<void> undoLessonStart(int lessonId) async {
+    await db.transaction(() async {
+      final lesson = (await rows('SELECT completed FROM lessons WHERE id=?', [
+        lessonId,
+      ])).single;
+      if (lesson['completed'] == 1) {
+        throw StateError(
+          'Eine abgeschlossene Stunde kann nicht zurückgesetzt werden.',
+        );
+      }
+      await db.customStatement('DELETE FROM notes WHERE lesson_id=?', [
+        lessonId,
+      ]);
+      await db.customStatement('DELETE FROM attendance WHERE lesson_id=?', [
+        lessonId,
+      ]);
+      await db.customStatement('DELETE FROM lessons WHERE id=?', [lessonId]);
+    });
+  }
+
   Future<void> addNote(
     int lessonId,
     int studentId,
@@ -399,6 +419,17 @@ class DaymarkStore {
           (start) => !RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(start),
         )) {
       throw const FormatException('Unterrichtszeiten sind ungültig.');
+    }
+    final startMinutes = starts.map((start) {
+      final parts = start.split(':');
+      return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+    }).toList();
+    for (var index = 1; index < startMinutes.length; index++) {
+      if (startMinutes[index] < startMinutes[index - 1] + 45) {
+        throw const FormatException(
+          'Unterrichtszeiten dürfen sich nicht überschneiden.',
+        );
+      }
     }
     await db.transaction(() async {
       for (var index = 0; index < starts.length; index++) {

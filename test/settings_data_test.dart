@@ -108,6 +108,11 @@ void main() {
         throwsFormatException,
       );
       expect(await store.setting('period_4'), '10:55');
+      await expectLater(
+        store.setPeriodTimes([...starts]..[3] = '10:30'),
+        throwsFormatException,
+      );
+      expect(await store.setting('period_4'), '10:55');
     },
   );
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'data/daymark_store.dart';
 import 'ui/daymark_app.dart';
@@ -58,6 +59,13 @@ class _DaymarkLoginState extends State<DaymarkLogin> {
     return MaterialApp(
       title: 'Daymark',
       debugShowCheckedModeBanner: false,
+      locale: const Locale('de', 'DE'),
+      supportedLocales: const [Locale('de', 'DE')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: daymarkTheme(),
       darkTheme: daymarkTheme(dark: true),
       themeMode: themeMode,
