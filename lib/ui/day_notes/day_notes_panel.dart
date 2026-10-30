@@ -113,144 +113,154 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
   }
 
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: DaymarkColors.surface,
-      border: Border.all(color: DaymarkColors.border),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 12, 14),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Tagesnotizen',
-                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
-                ),
-              ),
-              Tooltip(
-                message: 'Eintrag hinzufügen',
-                child: TextButton.icon(
-                  onPressed: _saving ? null : _edit,
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(0, 40),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  icon: const Icon(Icons.add, size: 20),
-                  label: const Text('Eintrag'),
-                ),
-              ),
-            ],
-          ),
+  Widget build(BuildContext context) => FutureBuilder<List<DayNote>>(
+    future: _notes,
+    builder: (context, snapshot) {
+      final notes = snapshot.data;
+      return Container(
+        decoration: BoxDecoration(
+          color: DaymarkColors.surface,
+          border: Border.all(color: DaymarkColors.border),
+          borderRadius: BorderRadius.circular(8),
         ),
-        const Divider(height: 1, indent: 22, endIndent: 22),
-        Expanded(
-          child: FutureBuilder<List<DayNote>>(
-            future: _notes,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(
-                  child: TextButton(
-                    onPressed: _reload,
-                    child: const Text(
-                      'Einträge konnten nicht geladen werden · Wiederholen',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 12, 14),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Tagesnotizen',
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                );
-              }
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final notes = snapshot.data!;
-              if (notes.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.sticky_note_2_outlined,
-                          size: 38,
-                          color: DaymarkColors.muted,
+                  if (notes?.isNotEmpty ?? false)
+                    Tooltip(
+                      message: 'Eintrag hinzufügen',
+                      child: TextButton.icon(
+                        onPressed: _saving ? null : _edit,
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, 40),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Noch keine Einträge für diesen Tag.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: DaymarkColors.muted),
-                        ),
-                        const SizedBox(height: 16),
-                        OutlinedButton.icon(
-                          onPressed: _saving ? null : _edit,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Eintrag hinzufügen'),
-                        ),
-                      ],
+                        icon: const Icon(Icons.add, size: 20),
+                        label: const Text('Eintrag'),
+                      ),
                     ),
-                  ),
-                );
-              }
-              return ListView.separated(
-                padding: const EdgeInsets.all(18),
-                itemCount: notes.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final note = notes[index];
-                  return Container(
-                    constraints: const BoxConstraints(minHeight: 66),
-                    decoration: BoxDecoration(
-                      color: DaymarkColors.background,
-                      border: Border.all(color: DaymarkColors.border),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 6, 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 9),
-                              child: Text(
-                                note.body,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  height: 1.35,
+                ],
+              ),
+            ),
+            const Divider(height: 1, indent: 22, endIndent: 22),
+            Expanded(
+              child: Builder(
+                builder: (context) {
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: TextButton(
+                        onPressed: _reload,
+                        child: const Text(
+                          'Einträge konnten nicht geladen werden · Wiederholen',
+                        ),
+                      ),
+                    );
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final loadedNotes = notes!;
+                  if (loadedNotes.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.sticky_note_2_outlined,
+                              size: 38,
+                              color: DaymarkColors.muted,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Noch keine Einträge für diesen Tag.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: DaymarkColors.muted),
+                            ),
+                            const SizedBox(height: 16),
+                            OutlinedButton.icon(
+                              onPressed: _saving ? null : _edit,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Eintrag hinzufügen'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    padding: const EdgeInsets.all(18),
+                    itemCount: loadedNotes.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final note = loadedNotes[index];
+                      return Container(
+                        constraints: const BoxConstraints(minHeight: 66),
+                        decoration: BoxDecoration(
+                          color: DaymarkColors.background,
+                          border: Border.all(color: DaymarkColors.border),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 6, 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 9),
+                                  child: Text(
+                                    note.body,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      height: 1.35,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                          PopupMenuButton<String>(
-                            tooltip: 'Eintragsaktionen',
-                            enabled: !_saving,
-                            onSelected: (action) =>
-                                action == 'edit' ? _edit(note) : _delete(note),
-                            itemBuilder: (context) => const [
-                              PopupMenuItem(
-                                value: 'edit',
-                                child: Text('Bearbeiten'),
-                              ),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Text('Löschen'),
+                              PopupMenuButton<String>(
+                                tooltip: 'Eintragsaktionen',
+                                enabled: !_saving,
+                                onSelected: (action) => action == 'edit'
+                                    ? _edit(note)
+                                    : _delete(note),
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: 'edit',
+                                    child: Text('Bearbeiten'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: Text('Löschen'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      );
+                    },
                   );
                 },
-              );
-            },
-          ),
+              ),
+            ),
+          ],
         ),
-      ],
-    ),
+      );
+    },
   );
 }

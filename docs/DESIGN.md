@@ -154,8 +154,10 @@ Schülernamen und bricht nur bei fehlender Breite in die nächste Zeile um.
 Stundenplan: Schuljahreswahl, Wochenraster und Eintragsdetails. Die Hauptaktion
 heißt „Stunde hinzufügen“. Fach und Klasse stehen im Raster in getrennten
 Zeilen; eine stabile, dezente Farbcodierung je Fach verbindet wiederkehrende
-Stunden visuell. Fachname und Farbakzent bilden die primäre Ebene, die Klasse
-erscheint als sekundäres Label. Tageskopf und Stundenachse sind gegenüber den
+Stunden visuell. Das Fach ist als größere primäre Zeile sichtbar, während die
+Klasse als deutlich beschriftete, kontrastreiche sekundäre Kennung darunter
+steht. Fachname und Farbakzent bilden die primäre Ebene. Tageskopf und
+Stundenachse sind gegenüber den
 Eintragskarten abgesetzt; Auswahlzustände bleiben mit Kontur und Farbe auch
 ohne die Fachfarbe eindeutig. Leere Felder bleiben zum Anlegen anklickbar. Das
 Raster scrollt bei vielen Stunden vertikal. Alle Einträge sind zusätzlich über

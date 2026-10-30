@@ -409,7 +409,7 @@ class _PlanningPageState extends State<PlanningPage> {
                             child: Column(
                               children: [
                                 Container(
-                                  height: 48,
+                                  height: 52,
                                   decoration: BoxDecoration(
                                     color: DaymarkColors.primary.withValues(
                                       alpha: DaymarkColors.dark ? .14 : .07,
@@ -422,7 +422,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                   ),
                                   child: Row(
                                     children: [
-                                      const SizedBox(width: 112),
+                                      const SizedBox(width: 128),
                                       for (final day in [
                                         'Montag',
                                         'Dienstag',
@@ -450,7 +450,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                   period++
                                 )
                                   Container(
-                                    height: 92,
+                                    height: 100,
                                     decoration: BoxDecoration(
                                       color: period.isEven
                                           ? DaymarkColors.background.withValues(
@@ -469,7 +469,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                     child: Row(
                                       children: [
                                         Container(
-                                          width: 112,
+                                          width: 128,
                                           decoration: BoxDecoration(
                                             color: DaymarkColors.primary
                                                 .withValues(
@@ -485,7 +485,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                           ),
                                           child: Padding(
                                             padding: const EdgeInsets.only(
-                                              left: 16,
+                                              left: 18,
                                             ),
                                             child: Column(
                                               mainAxisAlignment:
@@ -657,7 +657,7 @@ class _PlanningPageState extends State<PlanningPage> {
               ? () => _edit(null, weekday: weekday, period: period)
               : () => setState(() => _selectedId = entries.first.id),
           child: Padding(
-            padding: EdgeInsets.fromLTRB(entries.isEmpty ? 12 : 0, 8, 12, 8),
+            padding: EdgeInsets.fromLTRB(entries.isEmpty ? 12 : 0, 10, 12, 10),
             child: entries.isEmpty
                 ? Center(
                     child: _hoveredCell == cellId
@@ -678,7 +678,7 @@ class _PlanningPageState extends State<PlanningPage> {
                     children: [
                       Container(
                         width: 4,
-                        height: 48,
+                        height: 56,
                         margin: const EdgeInsets.only(right: 10),
                         decoration: BoxDecoration(
                           color: selected
@@ -701,11 +701,10 @@ class _PlanningPageState extends State<PlanningPage> {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 7),
                             _ClassBadge(
-                              label: entries
-                                  .map((slot) => slot.className)
-                                  .join(', '),
+                              label:
+                                  'Klasse ${entries.map((slot) => slot.className).join(', ')}',
                               accent: accent!,
                             ),
                           ],
@@ -833,10 +832,17 @@ class _ClassBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    constraints: const BoxConstraints(maxWidth: 170),
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    constraints: const BoxConstraints(maxWidth: 190),
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
     decoration: BoxDecoration(
-      color: DaymarkColors.activeSurface,
+      color: DaymarkColors.dark
+          ? DaymarkColors.primary.withValues(alpha: .18)
+          : DaymarkColors.activeSurface,
+      border: Border.all(
+        color: DaymarkColors.dark
+            ? DaymarkColors.primary.withValues(alpha: .55)
+            : DaymarkColors.primary.withValues(alpha: .28),
+      ),
       borderRadius: BorderRadius.circular(999),
     ),
     child: Text(
@@ -845,7 +851,7 @@ class _ClassBadge extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
         color: accent.foreground,
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: FontWeight.w700,
       ),
     ),

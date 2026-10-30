@@ -49,7 +49,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Tagesnotizen'), findsOneWidget);
-    expect(find.text('Eintrag'), findsOneWidget);
+    expect(find.text('Eintrag'), findsNothing);
+    expect(find.text('Eintrag hinzufügen'), findsOneWidget);
     final dateLabel = tester.widget<Text>(
       find.byKey(const ValueKey('selected-date-label')),
     );
@@ -79,7 +80,7 @@ void main() {
     await tester.pumpAndSettle();
 
     Future<void> addNote(String text) async {
-      await tester.tap(find.byTooltip('Eintrag hinzufügen'));
+      await tester.tap(find.text('Eintrag hinzufügen'));
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextFormField, 'Notiz'), text);
       await tester.tap(find.text('Speichern'));
@@ -87,6 +88,7 @@ void main() {
     }
 
     await addNote('Jahresabschluss vorbereiten');
+    expect(find.text('Eintrag'), findsOneWidget);
     expect(
       (await store.dayNotes('2026-12-31')).single['body'],
       'Jahresabschluss vorbereiten',
@@ -94,6 +96,7 @@ void main() {
     await tester.tap(find.byTooltip('Nächster Tag'));
     await tester.pumpAndSettle();
     expect(find.text('Jahresabschluss vorbereiten'), findsNothing);
+    expect(find.text('Eintrag'), findsNothing);
     await addNote('Neujahrsplanung');
     expect(
       (await store.dayNotes('2027-01-01')).single['body'],
