@@ -151,6 +151,7 @@ Schülerdetails
 ersetzen den Klasseninhalt und zeigen Bemerkungen und Fehlzeiten nach Schuljahr.
 Die Aktion „Schüler bearbeiten“ steht im Detailkopf direkt rechts neben dem
 Schülernamen und bricht nur bei fehlender Breite in die nächste Zeile um.
+Stundenplan: Die neue visuelle Referenz ist das vom Nutzer bereitgestellte Mockup mit hellem Wochenraster und rechter Detailspalte. Der Kopf zeigt Titel, Schuljahr und die Hauptaktion; acht Stunden sind durch 80-Pixel-Zeilen kompakt. Der Leerzustand der Detailspalte ist zentriert. Die vorhandene Liste aller Einträge bleibt über die Listenaktion erreichbar. Der Dialog „Eintrag anlegen“ hält zwischen den Formularfeldern Abstand, damit schwebende Beschriftungen die Nachbarfelder nicht berühren. Leere Rasterfelder zeigen beim Hover „Stunde hinzufügen“. Die Mockup-Symbole für Ansichten sind derzeit nur teilweise umgesetzt: Die Kalenderaktion schaltet zwischen Raster und einfacher Tagesliste um; es gibt keine weitere Kalenderansicht. Die Schrift und Illustration werden mit Flutter-Standards angenähert.
 Stundenplan: Schuljahreswahl, Wochenraster und Eintragsdetails. Die Hauptaktion
 heißt „Stunde hinzufügen“. Fach und Klasse stehen im Raster in getrennten
 Zeilen; eine stabile, dezente Farbcodierung je Fach verbindet wiederkehrende

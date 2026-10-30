@@ -29,6 +29,7 @@ class _PlanningPageState extends State<PlanningPage> {
   int _startDay = 1;
   int? _selectedId;
   int? _hoveredCell;
+  bool _showList = false;
   late Future<List<_Slot>> _slots = _loadSlots();
   @override
   void initState() {
@@ -110,11 +111,13 @@ class _PlanningPageState extends State<PlanningPage> {
                     ],
                     onChanged: (value) => update(() => classId = value!),
                   ),
+                  const SizedBox(height: 14),
                   TextFormField(
                     initialValue: subject,
                     onChanged: (value) => subject = value,
                     decoration: const InputDecoration(labelText: 'Fach'),
                   ),
+                  const SizedBox(height: 14),
                   DropdownButtonFormField<int>(
                     initialValue: weekday,
                     decoration: const InputDecoration(labelText: 'Wochentag'),
@@ -139,6 +142,7 @@ class _PlanningPageState extends State<PlanningPage> {
                     ],
                     onChanged: (value) => update(() => weekday = value!),
                   ),
+                  const SizedBox(height: 14),
                   DropdownButtonFormField<int>(
                     initialValue: period,
                     decoration: const InputDecoration(labelText: 'Stunde'),
@@ -151,6 +155,7 @@ class _PlanningPageState extends State<PlanningPage> {
                     ],
                     onChanged: (value) => update(() => period = value!),
                   ),
+                  const SizedBox(height: 14),
                   TextFormField(
                     initialValue: time,
                     onChanged: (value) => time = value,
@@ -158,6 +163,7 @@ class _PlanningPageState extends State<PlanningPage> {
                       labelText: 'Startzeit (HH:MM)',
                     ),
                   ),
+                  const SizedBox(height: 14),
                   TextFormField(
                     initialValue: from,
                     onChanged: (value) => from = value,
@@ -165,6 +171,7 @@ class _PlanningPageState extends State<PlanningPage> {
                       labelText: 'Gültig ab (TT.MM.JJJJ)',
                     ),
                   ),
+                  const SizedBox(height: 14),
                   TextFormField(
                     initialValue: to,
                     onChanged: (value) => to = value,
@@ -293,6 +300,10 @@ class _PlanningPageState extends State<PlanningPage> {
                     'Stundenplan',
                     style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold),
                   ),
+                  Text(
+                    'Regelstundenplan · Schuljahr $_year/${(_year + 1).toString().substring(2)}',
+                    style: TextStyle(color: DaymarkColors.muted),
+                  ),
                   const SizedBox(height: 14),
                   addButton,
                 ],
@@ -300,18 +311,29 @@ class _PlanningPageState extends State<PlanningPage> {
             }
             return Row(
               children: [
-                const Text(
-                  'Stundenplan',
-                  style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Stundenplan',
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Regelstundenplan · Schuljahr $_year/${(_year + 1).toString().substring(2)}',
+                      style: TextStyle(color: DaymarkColors.muted),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 28),
                 const Spacer(),
                 addButton,
               ],
             );
           },
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         Expanded(child: _gridView()),
       ],
     ),
@@ -352,7 +374,7 @@ class _PlanningPageState extends State<PlanningPage> {
           .firstOrNull;
       return LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth < 800) {
+          if (constraints.maxWidth < 800 || _showList) {
             return ListView(
               children: [
                 _yearPicker(),
@@ -409,7 +431,7 @@ class _PlanningPageState extends State<PlanningPage> {
                             child: Column(
                               children: [
                                 Container(
-                                  height: 52,
+                                  height: 46,
                                   decoration: BoxDecoration(
                                     color: DaymarkColors.primary.withValues(
                                       alpha: DaymarkColors.dark ? .14 : .07,
@@ -422,14 +444,10 @@ class _PlanningPageState extends State<PlanningPage> {
                                   ),
                                   child: Row(
                                     children: [
-                                      const SizedBox(width: 128),
-                                      for (final day in [
-                                        'Montag',
-                                        'Dienstag',
-                                        'Mittwoch',
-                                        'Donnerstag',
-                                        'Freitag',
-                                      ])
+                                      const SizedBox(width: 110),
+                                      for (final day in _weekdays.take(
+                                        dayCount,
+                                      ))
                                         Expanded(
                                           child: Center(
                                             child: Text(
@@ -450,7 +468,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                   period++
                                 )
                                   Container(
-                                    height: 100,
+                                    height: 80,
                                     decoration: BoxDecoration(
                                       color: period.isEven
                                           ? DaymarkColors.background.withValues(
@@ -469,7 +487,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                     child: Row(
                                       children: [
                                         Container(
-                                          width: 128,
+                                          width: 110,
                                           decoration: BoxDecoration(
                                             color: DaymarkColors.primary
                                                 .withValues(
@@ -485,7 +503,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                           ),
                                           child: Padding(
                                             padding: const EdgeInsets.only(
-                                              left: 18,
+                                              left: 16,
                                             ),
                                             child: Column(
                                               mainAxisAlignment:
@@ -500,17 +518,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                                   ),
                                                 ),
                                                 Text(
-                                                  visible
-                                                          .where(
-                                                            (slot) =>
-                                                                slot.period ==
-                                                                    period &&
-                                                                slot.time !=
-                                                                    null,
-                                                          )
-                                                          .firstOrNull
-                                                          ?.time ??
-                                                      '—',
+                                                  _periodTime(visible, period),
                                                   style: TextStyle(
                                                     fontSize: 12,
                                                     color: DaymarkColors.muted,
@@ -522,7 +530,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                         ),
                                         for (
                                           var weekday = 1;
-                                          weekday <= 5;
+                                          weekday <= dayCount;
                                           weekday++
                                         )
                                           Expanded(
@@ -545,7 +553,7 @@ class _PlanningPageState extends State<PlanningPage> {
                 ),
               ),
               const SizedBox(width: 14),
-              SizedBox(width: 300, child: _entry(selected)),
+              SizedBox(width: 290, child: _entry(selected)),
             ],
           );
         },
@@ -595,32 +603,65 @@ class _PlanningPageState extends State<PlanningPage> {
     );
   }
 
+  String _periodTime(List<_Slot> slots, int period) {
+    final start = slots
+        .where((slot) => slot.period == period && slot.time != null)
+        .firstOrNull
+        ?.time;
+    if (start == null) return '–';
+    final parts = start.split(':');
+    if (parts.length != 2) return start;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null || hour > 23 || minute > 59) {
+      return start;
+    }
+    final minutes = hour * 60 + minute + 45;
+    return '$start – ${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
+  }
+
   Widget _yearPicker() => SizedBox(
     height: 64,
     child: Row(
       children: [
-        IconButton(
+        const SizedBox(width: 14),
+        IconButton.outlined(
           onPressed: () => setState(() => _year--),
-          icon: Icon(Icons.chevron_left),
+          icon: const Icon(Icons.chevron_left),
           tooltip: 'Vorheriges Schuljahr',
         ),
         Expanded(
           child: Center(
             child: Text(
               'Regelstundenplan · Schuljahr $_year/${(_year + 1).toString().substring(2)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
         ),
         IconButton(
-          onPressed: _showAllEntries,
-          icon: const Icon(Icons.list_alt),
-          tooltip: 'Alle Einträge',
-        ),
-        IconButton(
           onPressed: () => setState(() => _year++),
-          icon: Icon(Icons.chevron_right),
+          icon: const Icon(Icons.chevron_right),
           tooltip: 'Nächstes Schuljahr',
         ),
+        const SizedBox(width: 8),
+        IconButton.outlined(
+          onPressed: _showAllEntries,
+          icon: const Icon(Icons.list_alt_outlined),
+          tooltip: 'Alle Einträge',
+        ),
+        const SizedBox(width: 8),
+        IconButton.outlined(
+          onPressed: () => setState(() => _showList = !_showList),
+          icon: Icon(
+            _showList ? Icons.grid_on_outlined : Icons.calendar_today_outlined,
+          ),
+          tooltip: _showList
+              ? 'Wochenraster anzeigen'
+              : 'Listenansicht anzeigen',
+        ),
+        const SizedBox(width: 14),
       ],
     ),
   );
@@ -641,7 +682,7 @@ class _PlanningPageState extends State<PlanningPage> {
             ? DaymarkColors.background
             : selected
             ? DaymarkColors.activeSurface
-            : accent!.surface,
+            : DaymarkColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
           side: BorderSide(
@@ -657,12 +698,12 @@ class _PlanningPageState extends State<PlanningPage> {
               ? () => _edit(null, weekday: weekday, period: period)
               : () => setState(() => _selectedId = entries.first.id),
           child: Padding(
-            padding: EdgeInsets.fromLTRB(entries.isEmpty ? 12 : 0, 10, 12, 10),
+            padding: EdgeInsets.fromLTRB(entries.isEmpty ? 12 : 0, 6, 8, 6),
             child: entries.isEmpty
                 ? Center(
                     child: _hoveredCell == cellId
                         ? Text(
-                            'Stunde planen',
+                            'Stunde hinzufügen',
                             style: TextStyle(
                               fontSize: 12,
                               color: DaymarkColors.primary,
@@ -678,7 +719,7 @@ class _PlanningPageState extends State<PlanningPage> {
                     children: [
                       Container(
                         width: 4,
-                        height: 56,
+                        height: 52,
                         margin: const EdgeInsets.only(right: 10),
                         decoration: BoxDecoration(
                           color: selected
@@ -701,7 +742,7 @@ class _PlanningPageState extends State<PlanningPage> {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            const SizedBox(height: 7),
+                            const SizedBox(height: 4),
                             _ClassBadge(
                               label:
                                   'Klasse ${entries.map((slot) => slot.className).join(', ')}',
@@ -730,16 +771,40 @@ class _PlanningPageState extends State<PlanningPage> {
                     'Unterrichtsstunde',
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 16),
-                  Icon(
-                    Icons.touch_app_outlined,
-                    size: 32,
-                    color: DaymarkColors.muted,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Wähle eine Stunde im Plan aus, um sie anzusehen oder zu bearbeiten.',
-                    style: TextStyle(color: DaymarkColors.muted),
+                  const SizedBox(height: 90),
+                  Center(
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 116,
+                          height: 116,
+                          decoration: BoxDecoration(
+                            color: DaymarkColors.backgroundSecondary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.calendar_month_outlined,
+                            size: 46,
+                            color: DaymarkColors.muted,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Keine Stunde ausgewählt',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Wähle eine Stunde im Plan aus, um sie anzusehen oder zu bearbeiten.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: DaymarkColors.muted),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               )
@@ -835,9 +900,7 @@ class _ClassBadge extends StatelessWidget {
     constraints: const BoxConstraints(maxWidth: 190),
     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
     decoration: BoxDecoration(
-      color: DaymarkColors.dark
-          ? DaymarkColors.primary.withValues(alpha: .18)
-          : DaymarkColors.activeSurface,
+      color: DaymarkColors.activeSurface,
       border: Border.all(
         color: DaymarkColors.dark
             ? DaymarkColors.primary.withValues(alpha: .55)

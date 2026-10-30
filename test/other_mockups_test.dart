@@ -56,6 +56,33 @@ void main() {
     });
   }
 
+  testWidgets('add lesson dialog keeps fields separated in a small window', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await DaymarkStore.inMemory();
+    addTearDown(store.close);
+    await store.addClass('3A');
+    await tester.pumpWidget(MaterialApp(home: DaymarkApp(store: store)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Stundenplan'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Stunde hinzufügen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Eintrag anlegen'), findsOneWidget);
+    final fields = find.byType(TextFormField);
+    expect(fields, findsNWidgets(4));
+    for (var index = 0; index < 3; index++) {
+      final upper = tester.getRect(fields.at(index));
+      final lower = tester.getRect(fields.at(index + 1));
+      expect(lower.top - upper.bottom, greaterThanOrEqualTo(14));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('timetable keeps subject cards neutral', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1;
