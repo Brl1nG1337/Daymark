@@ -6,6 +6,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
+  test('version 5 merges duplicate lesson notes without data loss', () async {
+    final directory = await Directory.systemTemp.createTemp('daymark-v5-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/daymark.sqlite');
+    final original = await DaymarkStore.openFile(file, 'secret');
+    await original.addClass('3a');
+    await original.addStudent(1, 'Erika', 'Muster');
+    await original.addSlot(1, 'Mathe', 1, 2, '09:00', '2026-01-01');
+    final slot = (await original.slots()).single;
+    final lessonId = await original.openLesson(slot, '2026-11-02');
+    await original.addNote(lessonId, 1, 'Erste Bemerkung');
+    await original.close();
+
+    final legacy = sqlite3.open(file.path);
+    try {
+      legacy.execute("PRAGMA key = 'secret'");
+      legacy.execute('DROP INDEX idx_notes_lesson_student');
+      legacy.execute(
+        "INSERT INTO notes(lesson_id,student_id,body,created_at) "
+        "VALUES ($lessonId,1,'Zweite Bemerkung','2026-11-02T10:00:00')",
+      );
+      legacy.execute('PRAGMA user_version = 5');
+      legacy.execute('UPDATE app_meta SET version = 5');
+    } finally {
+      legacy.close();
+    }
+
+    final upgraded = await DaymarkStore.openFile(file, 'secret');
+    try {
+      final notes = await upgraded.notes(lessonId);
+      expect(notes, hasLength(1));
+      expect(notes.single['body'], 'Erste Bemerkung\n\nZweite Bemerkung');
+      expect(
+        (await upgraded.rows('PRAGMA user_version')).single['user_version'],
+        6,
+      );
+    } finally {
+      await upgraded.close();
+    }
+  });
+
   test('upgrades encrypted version 3 without losing settings', () async {
     final directory = await Directory.systemTemp.createTemp('daymark-v3-');
     addTearDown(() => directory.delete(recursive: true));
@@ -19,6 +60,7 @@ void main() {
       legacy.execute("PRAGMA key = 'secret'");
       legacy.execute('DROP INDEX idx_day_notes_day');
       legacy.execute('DROP TABLE day_notes');
+      legacy.execute('DROP TABLE lesson_preparations');
       legacy.execute('PRAGMA user_version = 3');
       legacy.execute('UPDATE app_meta SET version = 3');
     } finally {
@@ -32,6 +74,17 @@ void main() {
       expect(
         (await upgraded.dayNotes('2027-01-01')).single['body'],
         'Neues Jahr',
+      );
+      await upgraded.addClass('3a');
+      await upgraded.addSlot(1, 'Mathe', 5, 2, '09:00', '2026-01-01');
+      await upgraded.saveLessonPreparation(
+        1,
+        '2027-01-01',
+        'Material bereitlegen',
+      );
+      expect(
+        (await upgraded.lessonPreparation(1, '2027-01-01'))?['body'],
+        'Material bereitlegen',
       );
     } finally {
       await upgraded.close();
@@ -86,11 +139,11 @@ void main() {
         expect(lesson.keys, containsAll(['started_at', 'summary', 'homework']));
         expect(
           (await store.rows('PRAGMA user_version')).single['user_version'],
-          4,
+          6,
         );
         expect(
           (await store.rows('SELECT version FROM app_meta')).single['version'],
-          4,
+          6,
         );
         await store.updateLessonDetails(1, 'Brüche', 'Wiederholung', 'Seite 5');
         await store.setSetting('theme', 'dark');

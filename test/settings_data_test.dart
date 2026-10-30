@@ -19,7 +19,7 @@ void main() {
     expect(await upgraded.setting('period_1'), '08:15');
     expect(
       (await upgraded.rows('PRAGMA user_version')).single['user_version'],
-      4,
+      6,
     );
     await upgraded.close();
   });

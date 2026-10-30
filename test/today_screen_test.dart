@@ -48,8 +48,14 @@ void main() {
       find.text('Für diesen Tag ist kein Unterricht geplant.'),
       findsOneWidget,
     );
-    expect(find.text('Vor- & Nachbereitung'), findsOneWidget);
+    expect(find.text('Tagesnotizen'), findsOneWidget);
     expect(find.text('Eintrag'), findsOneWidget);
+    final dateLabel = tester.widget<Text>(
+      find.byKey(const ValueKey('selected-date-label')),
+    );
+    expect(dateLabel.data, 'Freitag, 30. Oktober');
+    expect(dateLabel.style?.fontSize, 26);
+    expect(dateLabel.style?.fontWeight, FontWeight.w700);
     final todayButton = tester.widget<OutlinedButton>(
       find.widgetWithText(OutlinedButton, 'Heute'),
     );
@@ -251,7 +257,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Donnerstag, 31. Dezember'), findsOneWidget);
-    expect(find.text('Vor- & Nachbereitung'), findsOneWidget);
+    expect(find.text('Tagesnotizen'), findsOneWidget);
     await tester.tap(find.byTooltip('Nächster Tag'));
     await tester.pumpAndSettle();
     expect(find.text('Freitag, 1. Januar'), findsOneWidget);

@@ -84,7 +84,7 @@ class _DaymarkLoginState extends State<DaymarkLogin> {
                     children: [
                       Container(
                         height: 120,
-                        color: Colors.white,
+                        color: DaymarkBrandColors.white,
                         child: Image.asset(
                           'assets/branding/daymark-logo-v1.png',
                           fit: BoxFit.contain,
@@ -110,7 +110,9 @@ class _DaymarkLoginState extends State<DaymarkLogin> {
                           padding: const EdgeInsets.all(8),
                           child: Text(
                             error!,
-                            style: const TextStyle(color: Colors.red),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
                           ),
                         ),
                       const SizedBox(height: 12),

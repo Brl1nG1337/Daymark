@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/daymark_store.dart';
+import '../../data/lesson_preparation_repository.dart';
 import '../../data/offline_dictation.dart';
 import '../../domain/today_schedule.dart';
+import '../lesson_preparation/lesson_preparation_editor.dart';
+import '../lesson_preparation/lesson_preparation_view_model.dart';
 import '../theme/daymark_theme.dart';
 
 /// The working view for a single scheduled lesson.
@@ -37,12 +42,33 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
   bool _recording = false;
   final _dictation = OfflineDictation();
   String? _savedNoteText;
+  Timer? _noteSaveTimer;
+  Future<void> _noteSaveOperation = Future<void>.value();
+  int _pendingNoteWrites = 0;
+  String? _noteSaveError;
   final _contentKey = GlobalKey<_ContentEditorState>();
+  late final LessonPreparationViewModel? _preparationViewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    final slotId = widget.lesson.slotId;
+    _preparationViewModel = slotId == null
+        ? null
+        : LessonPreparationViewModel(
+            LessonPreparationRepository(widget.store),
+            slotId: slotId,
+            day: widget.lesson.day,
+          );
+    _preparationViewModel?.load();
+  }
 
   @override
   void dispose() {
+    _noteSaveTimer?.cancel();
     _dictation.cancel();
     _noteController.dispose();
+    _preparationViewModel?.dispose();
     super.dispose();
   }
 
@@ -81,16 +107,20 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
     }
   }
 
-  Future<void> _start() => _change(() async {
-    final slot = <String, Object?>{
-      'id': widget.lesson.slotId,
-      'class_id': widget.lesson.classId,
-      'subject': widget.lesson.subject,
-      'period': widget.lesson.period,
-    };
-    final id = await widget.store.openLesson(slot, dayKey(widget.lesson.day));
-    if (mounted) setState(() => _lessonId = id);
-  });
+  Future<void> _start() async {
+    final preparation = _preparationViewModel;
+    if (preparation?.dirty == true && !await preparation!.save()) return;
+    await _change(() async {
+      final slot = <String, Object?>{
+        'id': widget.lesson.slotId,
+        'class_id': widget.lesson.classId,
+        'subject': widget.lesson.subject,
+        'period': widget.lesson.period,
+      };
+      final id = await widget.store.openLesson(slot, dayKey(widget.lesson.day));
+      if (mounted) setState(() => _lessonId = id);
+    });
+  }
 
   Future<void> _complete(_LessonDetailData data) async {
     if (!await _mayLeave() || !mounted) return;
@@ -150,29 +180,67 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
   Future<void> _setAttendance(int studentId, String status) =>
       _change(() => widget.store.setAttendance(_lessonId!, studentId, status));
 
-  Future<bool> _mayDiscardNote() async {
-    if (_selectedStudentId == null ||
-        _noteController.text == (_savedNoteText ?? '')) {
-      return true;
+  Future<bool> _savePendingNote() async {
+    _noteSaveTimer?.cancel();
+    await _persistCurrentNote();
+    return _noteSaveError == null;
+  }
+
+  void _scheduleNoteSave(String _) {
+    _noteSaveTimer?.cancel();
+    if (_noteSaveError != null && mounted) {
+      setState(() => _noteSaveError = null);
     }
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Ungespeicherte Bemerkung'),
-            content: const Text('Änderungen an der Bemerkung verwerfen?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Weiter bearbeiten'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Verwerfen'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    _noteSaveTimer = Timer(
+      const Duration(milliseconds: 600),
+      () => unawaited(_persistCurrentNote()),
+    );
+  }
+
+  Future<void> _persistCurrentNote() {
+    _noteSaveTimer?.cancel();
+    _noteSaveTimer = null;
+    final lessonId = _lessonId;
+    final studentId = _selectedStudentId;
+    final body = _noteController.text.trim();
+    if (lessonId == null ||
+        studentId == null ||
+        body == (_savedNoteText ?? '')) {
+      return _noteSaveOperation;
+    }
+    if (mounted) {
+      setState(() {
+        _pendingNoteWrites++;
+        _noteSaveError = null;
+      });
+    }
+    final operation = _noteSaveOperation.then((_) async {
+      try {
+        final noteId = await widget.store.saveStudentLessonNote(
+          lessonId,
+          studentId,
+          body,
+        );
+        if (mounted && _selectedStudentId == studentId) {
+          setState(() {
+            _selectedNoteId = noteId;
+            _savedNoteText = body;
+            _data = _load();
+          });
+        }
+      } catch (error) {
+        if (mounted && _selectedStudentId == studentId) {
+          setState(() => _noteSaveError = 'Speichern fehlgeschlagen');
+          _showError(error);
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _pendingNoteWrites--);
+        }
+      }
+    });
+    _noteSaveOperation = operation;
+    return operation;
   }
 
   Future<void> _back() async {
@@ -183,9 +251,10 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
   }
 
   Future<bool> _mayLeave() async {
-    if (!await _mayDiscardNote() || !mounted) return false;
+    if (!await _savePendingNote() || !mounted) return false;
     if (_contentKey.currentState?.dirty == true) {
-      return await showDialog<bool>(
+      final discard =
+          await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('Ungespeicherter Stundeninhalt'),
@@ -203,6 +272,34 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
             ),
           ) ??
           false;
+      if (!discard) return false;
+    }
+    if (!mounted) return false;
+    final preparation = _preparationViewModel;
+    if (preparation?.dirty == true) {
+      final discard =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Ungespeicherte Vorbereitung'),
+              content: const Text(
+                'Änderungen an den Vorbereitungsnotizen verwerfen?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Weiter bearbeiten'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Verwerfen'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!discard) return false;
+      preparation!.discardChanges();
     }
     return true;
   }
@@ -213,70 +310,43 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
     if (mounted) setState(() => _tab = tab);
   }
 
-  Future<void> _selectStudent(
-    _StudentAttendance student,
-    _LessonDetailData data,
-  ) async {
-    if (student.studentId != _selectedStudentId && !await _mayDiscardNote()) {
-      return;
+  Future<void> _selectStudent(_StudentAttendance student) async {
+    if (!await _savePendingNote() || !mounted) return;
+    await _cancelRecording();
+    try {
+      final row = await widget.store.studentLessonNote(
+        _lessonId!,
+        student.studentId,
+      );
+      if (!mounted) return;
+      final note = row == null ? null : _LessonNote.fromRow(row);
+      setState(() {
+        _selectedStudentId = student.studentId;
+        _selectedNoteId = note?.id;
+        _noteController.text = note?.body ?? '';
+        _savedNoteText = _noteController.text.trim();
+        _noteSaveError = null;
+      });
+    } catch (error) {
+      if (mounted) _showError(error);
     }
-    if (!mounted) return;
-    final note = data.latestNoteFor(student.studentId);
-    setState(() {
-      _selectedStudentId = student.studentId;
-      _selectedNoteId = note?.id;
-      _noteController.text = note?.body ?? '';
-      _savedNoteText = _noteController.text;
-    });
   }
 
-  Future<void> _saveNote(_LessonDetailData data) async {
+  Future<void> _deleteNote() async {
     final studentId = _selectedStudentId;
-    if (studentId == null) return;
+    if (studentId == null || _selectedNoteId == null) return;
+    _noteSaveTimer?.cancel();
     await _change(() async {
-      final existing = data
-          .notesFor(studentId)
-          .where((note) => note.id == _selectedNoteId)
-          .firstOrNull;
-      final body = _noteController.text.trim();
-      if (existing == null) {
-        if (body.isNotEmpty) {
-          await widget.store.addNote(_lessonId!, studentId, body);
-          final saved = await widget.store.notes(_lessonId!);
-          _selectedNoteId =
-              (saved.firstWhere((row) => row['student_id'] == studentId))['id']
-                  as int;
-        }
-      } else {
-        await widget.store.updateNote(existing.id, body);
-      }
-      _savedNoteText = body;
-    });
-  }
-
-  Future<void> _deleteNote(_LessonDetailData data) async {
-    final studentId = _selectedStudentId;
-    final note = studentId == null
-        ? null
-        : data
-              .notesFor(studentId)
-              .where((note) => note.id == _selectedNoteId)
-              .firstOrNull;
-    if (note == null) return;
-    await _change(() async {
-      await widget.store.deleteNote(note.id);
-      final remaining = data
-          .notesFor(studentId!)
-          .where((item) => item.id != note.id)
-          .firstOrNull;
-      _selectedNoteId = remaining?.id;
-      _noteController.text = remaining?.body ?? '';
-      _savedNoteText = _noteController.text;
+      await widget.store.saveStudentLessonNote(_lessonId!, studentId, '');
+      _selectedNoteId = null;
+      _noteController.clear();
+      _savedNoteText = '';
+      _noteSaveError = null;
     });
   }
 
   Future<void> _closeNote() async {
-    if (!await _mayDiscardNote() || !mounted) return;
+    if (!await _savePendingNote() || !mounted) return;
     await _cancelRecording();
     if (!mounted) return;
     setState(() {
@@ -304,6 +374,7 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
             text,
           ].where((part) => part.trim().isNotEmpty).join(' ');
           _recording = false;
+          _scheduleNoteSave(_noteController.text);
         }
       } else {
         await _dictation.start();
@@ -318,48 +389,6 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
     }
   }
 
-  Future<void> _showHistory(int studentId) async {
-    try {
-      final rows = await widget.store.history(studentId);
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Schülerhistorie'),
-          content: SizedBox(
-            width: 540,
-            height: 420,
-            child: rows.isEmpty
-                ? const Center(
-                    child: Text('Noch keine abgeschlossenen Stunden.'),
-                  )
-                : ListView(
-                    children: [
-                      for (final row in rows)
-                        ListTile(
-                          title: Text(
-                            "${row['day']} · ${row['period']}. ${row['subject']}",
-                          ),
-                          subtitle: Text(
-                            "${row['status']}${row['body'] == null ? '' : ' · ${row['body']}'}",
-                          ),
-                        ),
-                    ],
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Schließen'),
-            ),
-          ],
-        ),
-      );
-    } catch (error) {
-      if (mounted) _showError(error);
-    }
-  }
-
   void _showError(Object error) => ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text('Änderung konnte nicht gespeichert werden: $error')),
   );
@@ -371,6 +400,7 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
         onStart: _busy ? null : _start,
         lesson: widget.lesson,
         onBack: _back,
+        preparationViewModel: _preparationViewModel,
       );
     }
     return FutureBuilder<_LessonDetailData>(
@@ -399,6 +429,7 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
           return const Center(child: CircularProgressIndicator());
         }
         final data = snapshot.data!;
+        final preparation = _preparationViewModel;
         return Column(
           children: [
             _Header(
@@ -412,45 +443,48 @@ class _LessonDetailPageState extends State<LessonDetailPage> {
             ),
             _Tabs(tab: _tab, onChanged: _selectTab),
             Expanded(
-              child: _tab == _DetailTab.attendance
-                  ? _AttendanceBody(
-                      data: data,
-                      selectedStudentId: _selectedStudentId,
-                      enabled: !data.completed && !_busy,
-                      onStatus: _setAttendance,
-                      onSelect: (student) => _selectStudent(student, data),
-                      onHistory: _showHistory,
-                      noteEditor: _selectedStudentId == null
-                          ? null
-                          : _NoteEditor(
-                              student: data.student(_selectedStudentId!),
-                              controller: _noteController,
-                              hasNote: _selectedNoteId != null,
-                              notes: data.notesFor(_selectedStudentId!),
-                              selectedNoteId: _selectedNoteId,
-                              onSelectNote: (note) {
-                                setState(() {
-                                  _selectedNoteId = note?.id;
-                                  _noteController.text = note?.body ?? '';
-                                  _savedNoteText = _noteController.text;
-                                });
-                              },
-                              enabled: !data.completed && !_busy && !_recording,
-                              onClose: _closeNote,
-                              onDictate: _toggleDictation,
-                              recording: _recording,
-                              dictationEnabled: !data.completed && !_busy,
-                              onSave: () => _saveNote(data),
-                              onDelete: () => _deleteNote(data),
-                            ),
-                    )
-                  : _ContentEditor(
-                      key: _contentKey,
-                      data: data,
-                      store: widget.store,
-                      lessonId: _lessonId!,
-                      onSaved: _reload,
-                    ),
+              child: switch (_tab) {
+                _DetailTab.attendance => _AttendanceBody(
+                  data: data,
+                  selectedStudentId: _selectedStudentId,
+                  enabled: !data.completed && !_busy,
+                  onStatus: _setAttendance,
+                  onAddNote: _selectStudent,
+                  noteEditor: _selectedStudentId == null
+                      ? null
+                      : _NoteEditor(
+                          student: data.student(_selectedStudentId!),
+                          controller: _noteController,
+                          hasNote: _selectedNoteId != null,
+                          enabled: !data.completed && !_busy && !_recording,
+                          saving: _pendingNoteWrites > 0,
+                          saveError: _noteSaveError,
+                          onChanged: _scheduleNoteSave,
+                          onClose: _closeNote,
+                          onDictate: _toggleDictation,
+                          recording: _recording,
+                          dictationEnabled: !data.completed && !_busy,
+                          onDelete: _deleteNote,
+                        ),
+                ),
+                _DetailTab.content => _ContentEditor(
+                  key: _contentKey,
+                  data: data,
+                  store: widget.store,
+                  lessonId: _lessonId!,
+                  onSaved: _reload,
+                ),
+                _DetailTab.preparation =>
+                  preparation == null
+                      ? const _PreparationUnavailable()
+                      : Padding(
+                          padding: const EdgeInsets.all(22),
+                          child: LessonPreparationEditor(
+                            viewModel: preparation,
+                            readOnly: data.completed,
+                          ),
+                        ),
+              },
             ),
           ],
         );
@@ -464,45 +498,113 @@ class _PlannedLesson extends StatelessWidget {
     required this.lesson,
     required this.onStart,
     required this.onBack,
+    required this.preparationViewModel,
   });
+
   final TodayLesson lesson;
   final VoidCallback? onStart;
   final VoidCallback onBack;
+  final LessonPreparationViewModel? preparationViewModel;
+
   @override
   Widget build(BuildContext context) => Column(
     children: [
       _StaticHeader(lesson: lesson, onBack: onBack),
       Expanded(
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.play_circle_outline,
-                size: 54,
-                color: DaymarkColors.primary,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final start = _PlannedLessonStart(onStart: onStart);
+            final preparation = preparationViewModel == null
+                ? const _PreparationUnavailable()
+                : LessonPreparationEditor(viewModel: preparationViewModel!);
+            if (constraints.maxWidth < 850) {
+              return ListView(
+                padding: const EdgeInsets.all(22),
+                children: [
+                  SizedBox(height: 230, child: start),
+                  const SizedBox(height: 16),
+                  SizedBox(height: 500, child: preparation),
+                ],
+              );
+            }
+            return Padding(
+              padding: const EdgeInsets.all(22),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(flex: 2, child: start),
+                  const SizedBox(width: 16),
+                  Expanded(flex: 3, child: preparation),
+                ],
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'Geplante Stunde',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Die Anwesenheit wird beim Start der Stunde angelegt.',
-                style: TextStyle(color: DaymarkColors.muted),
-              ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: onStart,
-                icon: Icon(Icons.play_arrow_rounded),
-                label: const Text('Stunde starten'),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     ],
+  );
+}
+
+class _PlannedLessonStart extends StatelessWidget {
+  const _PlannedLessonStart({required this.onStart});
+
+  final VoidCallback? onStart;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: DaymarkColors.surface,
+      border: Border.all(color: DaymarkColors.border),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.play_circle_outline,
+              size: 54,
+              color: DaymarkColors.primary,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Geplante Stunde',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Die Anwesenheit wird beim Start der Stunde angelegt.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: DaymarkColors.muted),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onStart,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Stunde starten'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _PreparationUnavailable extends StatelessWidget {
+  const _PreparationUnavailable();
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text(
+        'Für diese historische Stunde sind keine Vorbereitungsnotizen verfügbar.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: DaymarkColors.muted),
+      ),
+    ),
   );
 }
 
@@ -514,11 +616,13 @@ class _Header extends StatelessWidget {
     this.onComplete,
     this.onReopen,
   });
+
   final _LessonDetailData lesson;
   final VoidCallback onBack;
   final VoidCallback? onUndoStart;
   final VoidCallback? onComplete;
   final VoidCallback? onReopen;
+
   @override
   Widget build(BuildContext context) => _HeaderLayout(
     className: lesson.className,
@@ -526,6 +630,7 @@ class _Header extends StatelessWidget {
     day: lesson.day,
     period: lesson.period,
     startTime: lesson.startTime,
+    started: true,
     completed: lesson.completed,
     onBack: onBack,
     onUndoStart: onUndoStart,
@@ -536,8 +641,10 @@ class _Header extends StatelessWidget {
 
 class _StaticHeader extends StatelessWidget {
   const _StaticHeader({required this.lesson, required this.onBack});
+
   final TodayLesson lesson;
   final VoidCallback onBack;
+
   @override
   Widget build(BuildContext context) => _HeaderLayout(
     className: lesson.className,
@@ -545,6 +652,7 @@ class _StaticHeader extends StatelessWidget {
     day: dayKey(lesson.day),
     period: lesson.period,
     startTime: lesson.startTime,
+    started: false,
     completed: false,
     onBack: onBack,
   );
@@ -557,18 +665,21 @@ class _HeaderLayout extends StatelessWidget {
     required this.day,
     required this.period,
     required this.startTime,
+    required this.started,
     required this.completed,
     required this.onBack,
     this.onComplete,
     this.onReopen,
     this.onUndoStart,
   });
+
   final String className, subject, day;
   final int period;
   final String? startTime;
-  final bool completed;
+  final bool started, completed;
   final VoidCallback onBack;
   final VoidCallback? onComplete, onReopen, onUndoStart;
+
   @override
   Widget build(BuildContext context) {
     final date = DateTime.parse(day);
@@ -637,23 +748,12 @@ class _HeaderLayout extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!compact) ...[
-                Icon(
-                  Icons.circle,
-                  size: 14,
-                  color: completed
-                      ? DaymarkColors.success
-                      : const Color(0xff009a4f),
-                ),
+              if (!compact && started) ...[
+                Icon(Icons.circle, size: 14, color: DaymarkColors.success),
                 const SizedBox(width: 12),
                 Text(
                   completed ? 'Abgeschlossen' : 'Begonnen',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: completed
-                        ? DaymarkColors.success
-                        : const Color(0xff009a4f),
-                  ),
+                  style: TextStyle(fontSize: 18, color: DaymarkColors.success),
                 ),
                 const SizedBox(width: 26),
               ],
@@ -689,26 +789,35 @@ class _HeaderLayout extends StatelessWidget {
   }
 }
 
-enum _DetailTab { attendance, content }
+enum _DetailTab { attendance, content, preparation }
 
 class _Tabs extends StatelessWidget {
   const _Tabs({required this.tab, required this.onChanged});
+
   final _DetailTab tab;
   final ValueChanged<_DetailTab> onChanged;
+
   @override
   Widget build(BuildContext context) => Container(
+    key: const ValueKey('lesson-detail-tabs'),
+    width: double.infinity,
     height: 58,
     padding: const EdgeInsets.only(left: 22),
     decoration: BoxDecoration(
       border: Border(bottom: BorderSide(color: DaymarkColors.border)),
     ),
-    child: Row(
-      children: [
-        _tab('Anwesenheit', _DetailTab.attendance),
-        _tab('Stundeninhalt', _DetailTab.content),
-      ],
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _tab('Anwesenheit', _DetailTab.attendance),
+          _tab('Stundeninhalt', _DetailTab.content),
+          _tab('Vorbereitung', _DetailTab.preparation),
+        ],
+      ),
     ),
   );
+
   Widget _tab(String label, _DetailTab value) {
     final selected = tab == value;
     return InkWell(
@@ -744,17 +853,17 @@ class _AttendanceBody extends StatelessWidget {
     required this.selectedStudentId,
     required this.enabled,
     required this.onStatus,
-    required this.onSelect,
-    required this.onHistory,
+    required this.onAddNote,
     this.noteEditor,
   });
+
   final _LessonDetailData data;
   final int? selectedStudentId;
   final bool enabled;
   final void Function(int, String) onStatus;
-  final ValueChanged<_StudentAttendance> onSelect;
-  final ValueChanged<int> onHistory;
+  final ValueChanged<_StudentAttendance> onAddNote;
   final Widget? noteEditor;
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
@@ -764,27 +873,30 @@ class _AttendanceBody extends StatelessWidget {
         selectedStudentId: selectedStudentId,
         enabled: enabled,
         onStatus: onStatus,
-        onSelect: onSelect,
-        onHistory: onHistory,
-        columns: split ? 2 : 1,
+        onAddNote: onAddNote,
+        maxTableWidth: noteEditor == null ? null : 760,
       );
-      final note = noteEditor ?? const _EmptyNote();
+      final showNote = noteEditor != null;
       return Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(22),
         child: split
-            ? Row(
-                children: [
-                  Expanded(flex: 3, child: table),
-                  const SizedBox(width: 8),
-                  SizedBox(width: 405, child: note),
-                ],
-              )
+            ? showNote
+                  ? Row(
+                      children: [
+                        Expanded(flex: 3, child: table),
+                        const SizedBox(width: 8),
+                        SizedBox(width: 405, child: noteEditor!),
+                      ],
+                    )
+                  : table
             : ListView(
                 key: const ValueKey('lesson-detail-narrow-scroll'),
                 children: [
                   SizedBox(height: 620, child: table),
-                  const SizedBox(height: 10),
-                  SizedBox(height: 470, child: note),
+                  if (showNote) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(height: 470, child: noteEditor!),
+                  ],
                 ],
               ),
       );
@@ -798,112 +910,106 @@ class _AttendancePanel extends StatelessWidget {
     required this.selectedStudentId,
     required this.enabled,
     required this.onStatus,
-    required this.onSelect,
-    required this.onHistory,
-    required this.columns,
+    required this.onAddNote,
+    required this.maxTableWidth,
   });
+
   final _LessonDetailData data;
   final int? selectedStudentId;
   final bool enabled;
   final void Function(int, String) onStatus;
-  final ValueChanged<_StudentAttendance> onSelect;
-  final ValueChanged<int> onHistory;
-  final int columns;
+  final ValueChanged<_StudentAttendance> onAddNote;
+  final double? maxTableWidth;
+
   @override
-  Widget build(BuildContext context) => _Panel(
-    child: Padding(
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Anwesenheit',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            data.attendanceSummary,
-            style: TextStyle(fontSize: 18, color: DaymarkColors.muted),
-          ),
-          const SizedBox(height: 18),
-          const Divider(),
-          const SizedBox(height: 8),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: constraints.maxWidth < (columns == 2 ? 760 : 380)
-                      ? (columns == 2 ? 760 : 380)
-                      : constraints.maxWidth,
-                  child: Row(
-                    children: [
-                      for (var column = 0; column < columns; column++)
-                        Expanded(
-                          child: Column(
-                            children: [
-                              const _AttendanceHeadings(),
-                              Expanded(
-                                child: ListView.builder(
-                                  itemCount: columns == 1
-                                      ? data.students.length
-                                      : (data.students.length + 1) ~/ 2,
-                                  itemBuilder: (context, index) {
-                                    final studentIndex =
-                                        index +
-                                        (column == 0
-                                            ? 0
-                                            : (data.students.length + 1) ~/ 2);
-                                    if (studentIndex >= data.students.length) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    final student = data.students[studentIndex];
-                                    return SizedBox(
-                                      height: 42,
-                                      child: _StudentRow(
-                                        student: student,
-                                        selected:
-                                            student.studentId ==
-                                            selectedStudentId,
-                                        enabled: enabled,
-                                        onStatus: onStatus,
-                                        onSelect: onSelect,
-                                        onHistory: onHistory,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
+  Widget build(BuildContext context) {
+    final studentList = Column(
+      children: [
+        const _AttendanceHeadings(),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.only(right: 20),
+            itemCount: data.students.length,
+            itemBuilder: (context, index) {
+              final student = data.students[index];
+              return SizedBox(
+                height: 50,
+                child: _StudentRow(
+                  student: student,
+                  selected: student.studentId == selectedStudentId,
+                  enabled: enabled,
+                  onStatus: onStatus,
+                  onAddNote: onAddNote,
                 ),
-              ),
-            ),
+              );
+            },
           ),
-        ],
+        ),
+      ],
+    );
+    return _Panel(
+      key: const ValueKey('lesson-attendance-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Anwesenheit',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              data.attendanceSummary,
+              style: TextStyle(fontSize: 18, color: DaymarkColors.muted),
+            ),
+            const SizedBox(height: 18),
+            const Divider(),
+            const SizedBox(height: 8),
+            Expanded(
+              child: maxTableWidth == null
+                  ? studentList
+                  : Align(
+                      alignment: Alignment.topLeft,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxTableWidth!),
+                        child: studentList,
+                      ),
+                    ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _AttendanceHeadings extends StatelessWidget {
   const _AttendanceHeadings();
+
   @override
-  Widget build(BuildContext context) => const SizedBox(
-    height: 34,
-    child: Row(
-      children: [
-        SizedBox(width: 28, child: Text('#')),
-        Expanded(child: Text('Schüler')),
-        SizedBox(width: 46, child: Text('A')),
-        SizedBox(width: 46, child: Text('F')),
-        SizedBox(width: 46, child: Text('E')),
-        SizedBox(width: 46, child: Text('V')),
-        SizedBox(width: 48),
-      ],
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 24, 0),
+    child: SizedBox(
+      height: 34,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 48,
+            child: Text('#', style: TextStyle(color: DaymarkColors.muted)),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Schüler',
+              style: TextStyle(color: DaymarkColors.muted),
+            ),
+          ),
+          const SizedBox(width: 184, child: Center(child: Text('Anwesenheit'))),
+          const Expanded(flex: 1,child: SizedBox()),
+          const SizedBox(width: 48, child: Center(child: Text('Notiz'))),
+        ],
+      ),
     ),
   );
 }
@@ -914,57 +1020,67 @@ class _StudentRow extends StatelessWidget {
     required this.selected,
     required this.enabled,
     required this.onStatus,
-    required this.onSelect,
-    required this.onHistory,
+    required this.onAddNote,
   });
+
   final _StudentAttendance student;
   final bool selected, enabled;
   final void Function(int, String) onStatus;
-  final ValueChanged<_StudentAttendance> onSelect;
-  final ValueChanged<int> onHistory;
+  final ValueChanged<_StudentAttendance> onAddNote;
+
   @override
   Widget build(BuildContext context) => Container(
-    color: selected ? DaymarkColors.activeSurface : null,
+    decoration: BoxDecoration(
+      color: selected ? DaymarkColors.activeSurface : null,
+      border: Border(bottom: BorderSide(color: DaymarkColors.border)),
+    ),
     padding: const EdgeInsets.symmetric(horizontal: 4),
     child: Row(
       children: [
         SizedBox(
-          width: 28,
+          width: 48,
           child: Text(
             '${student.number}',
             style: TextStyle(color: DaymarkColors.muted),
           ),
         ),
         Expanded(
-          child: InkWell(
-            onTap: () => onSelect(student),
-            child: Text(
-              student.name,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 16),
-            ),
+          flex: 2,
+          child: Text(
+            student.name,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 16),
           ),
         ),
-        for (final choice in _AttendanceChoice.values)
-          _StatusButton(
-            key: ValueKey('attendance-${student.studentId}-${choice.value}'),
-            choice: choice,
-            selected: student.status == choice.value,
-            enabled: enabled,
-            onTap: () => onStatus(student.studentId, choice.value),
+        SizedBox(
+          width: 184,
+          child: Row(
+            children: [
+              for (final choice in _AttendanceChoice.values)
+                _StatusButton(
+                  key: ValueKey(
+                    'attendance-${student.studentId}-${choice.value}',
+                  ),
+                  choice: choice,
+                  selected: student.status == choice.value,
+                  enabled: enabled,
+                  onTap: () => onStatus(student.studentId, choice.value),
+                ),
+            ],
           ),
-        PopupMenuButton<String>(
-          tooltip: 'Bemerkung und Historie',
-          onSelected: (value) => value == 'history'
-              ? onHistory(student.studentId)
-              : onSelect(student),
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 'note', child: Text('Bemerkung')),
-            PopupMenuItem(value: 'history', child: Text('Schülerhistorie')),
-          ],
+        ),
+        const Expanded(flex: 1,child: SizedBox()),
+        IconButton(
+          key: ValueKey('add-student-note-${student.studentId}'),
+          tooltip: 'Bemerkung öffnen',
+          onPressed: () => onAddNote(student),
           icon: Icon(
-            Icons.description_outlined,
-            color: selected ? DaymarkColors.primary : DaymarkColors.muted,
+            student.hasNote
+                ? Icons.sticky_note_2
+                : Icons.sticky_note_2_outlined,
+            color: student.hasNote || selected
+                ? DaymarkColors.primary
+                : DaymarkColors.muted,
           ),
         ),
       ],
@@ -973,14 +1089,15 @@ class _StudentRow extends StatelessWidget {
 }
 
 enum _AttendanceChoice {
-  present('present', 'A', Color(0xff128348)),
-  absent('absent', 'F', Color(0xffdf2525)),
-  excused('excused', 'E', Color(0xff4c648a)),
-  late('late', 'V', Color(0xffe97c00));
+  present('present', 'Anwesend', Icons.check_circle_outline),
+  absent('absent', 'Fehlt', Icons.cancel_outlined),
+  excused('excused', 'Entschuldigt', Icons.event_busy_outlined),
+  late('late', 'Verspätet', Icons.schedule);
 
-  const _AttendanceChoice(this.value, this.label, this.color);
+  const _AttendanceChoice(this.value, this.label, this.icon);
+
   final String value, label;
-  final Color color;
+  final IconData icon;
 }
 
 class _StatusButton extends StatelessWidget {
@@ -991,30 +1108,54 @@ class _StatusButton extends StatelessWidget {
     required this.enabled,
     required this.onTap,
   });
+
   final _AttendanceChoice choice;
   final bool selected, enabled;
   final VoidCallback onTap;
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(left: 4),
-    child: SizedBox(
-      width: 42,
-      height: 34,
-      child: OutlinedButton(
-        onPressed: enabled ? onTap : null,
-        style: OutlinedButton.styleFrom(
-          padding: EdgeInsets.zero,
-          minimumSize: Size.zero,
-          foregroundColor: selected ? Colors.white : DaymarkColors.muted,
-          backgroundColor: selected ? choice.color : DaymarkColors.background,
-          side: BorderSide(
-            color: selected ? choice.color : DaymarkColors.border,
+  Widget build(BuildContext context) {
+    final statusColor = switch (choice) {
+      _AttendanceChoice.present => DaymarkColors.success,
+      _AttendanceChoice.absent => DaymarkColors.error,
+      _AttendanceChoice.excused => DaymarkColors.muted,
+      _AttendanceChoice.late => DaymarkColors.warning,
+    };
+    final onStatusColor = switch (choice) {
+      _AttendanceChoice.present => DaymarkColors.current.onSuccess,
+      _AttendanceChoice.absent => DaymarkColors.current.onError,
+      _AttendanceChoice.excused => DaymarkColors.background,
+      _AttendanceChoice.late => DaymarkColors.current.onWarning,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: SizedBox(
+        width: 42,
+        height: 34,
+        child: OutlinedButton(
+          onPressed: enabled ? onTap : null,
+          style: OutlinedButton.styleFrom(
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            foregroundColor: selected ? onStatusColor : DaymarkColors.muted,
+            backgroundColor: selected ? statusColor : DaymarkColors.background,
+            side: BorderSide(
+              color: selected ? statusColor : DaymarkColors.border,
+            ),
+          ),
+          child: Tooltip(
+            message: choice.label,
+            child: Semantics(
+              label: choice.label,
+              button: true,
+              selected: selected,
+              child: Icon(choice.icon, size: 21),
+            ),
           ),
         ),
-        child: Text(choice.label),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _NoteEditor extends StatelessWidget {
@@ -1022,24 +1163,24 @@ class _NoteEditor extends StatelessWidget {
     required this.student,
     required this.controller,
     required this.hasNote,
-    required this.notes,
-    required this.selectedNoteId,
-    required this.onSelectNote,
     required this.enabled,
-    required this.onSave,
+    required this.saving,
+    required this.saveError,
+    required this.onChanged,
     required this.onDelete,
     required this.onClose,
     required this.onDictate,
     required this.recording,
     required this.dictationEnabled,
   });
+
   final _StudentAttendance student;
   final TextEditingController controller;
-  final bool hasNote, enabled, recording, dictationEnabled;
-  final List<_LessonNote> notes;
-  final int? selectedNoteId;
-  final ValueChanged<_LessonNote?> onSelectNote;
-  final VoidCallback onSave, onDelete, onClose, onDictate;
+  final bool hasNote, enabled, saving, recording, dictationEnabled;
+  final String? saveError;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onDelete, onClose, onDictate;
+
   @override
   Widget build(BuildContext context) => _Panel(
     child: Padding(
@@ -1068,30 +1209,7 @@ class _NoteEditor extends StatelessWidget {
             student.name,
             style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 6),
-          Text(
-            student.lessonLabel,
-            style: TextStyle(fontSize: 18, color: DaymarkColors.muted),
-          ),
-          if (notes.isNotEmpty)
-            DropdownButton<int?>(
-              value: selectedNoteId,
-              items: [
-                const DropdownMenuItem<int?>(
-                  value: null,
-                  child: Text('Neue Bemerkung'),
-                ),
-                for (var index = 0; index < notes.length; index++)
-                  DropdownMenuItem<int?>(
-                    value: notes[index].id,
-                    child: Text('Bemerkung ${index + 1}'),
-                  ),
-              ],
-              onChanged: (id) => onSelectNote(
-                id == null ? null : notes.firstWhere((note) => note.id == id),
-              ),
-            ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 24),
           const Text(
             'Bemerkung',
             style: TextStyle(fontWeight: FontWeight.w700),
@@ -1101,6 +1219,7 @@ class _NoteEditor extends StatelessWidget {
             child: TextField(
               controller: controller,
               enabled: enabled,
+              onChanged: onChanged,
               maxLines: null,
               expands: true,
               textAlignVertical: TextAlignVertical.top,
@@ -1110,25 +1229,34 @@ class _NoteEditor extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
+          Text(
+            saveError ??
+                (saving
+                    ? 'Wird gespeichert…'
+                    : hasNote
+                    ? 'Gespeichert'
+                    : 'Wird automatisch gespeichert'),
+            style: TextStyle(
+              color: saveError == null
+                  ? DaymarkColors.muted
+                  : DaymarkColors.error,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 6),
           TextButton.icon(
             onPressed: dictationEnabled ? onDictate : null,
             icon: Icon(Icons.mic),
             label: Text(recording ? 'Aufnahme beenden' : 'Diktieren'),
           ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: enabled ? onSave : null,
-              child: const Text('Bemerkung speichern'),
-            ),
-          ),
           if (hasNote)
             Center(
               child: TextButton(
                 onPressed: enabled ? onDelete : null,
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                style: TextButton.styleFrom(
+                  foregroundColor: DaymarkColors.error,
+                ),
                 child: const Text('Bemerkung löschen'),
               ),
             ),
@@ -1138,23 +1266,11 @@ class _NoteEditor extends StatelessWidget {
   );
 }
 
-class _EmptyNote extends StatelessWidget {
-  const _EmptyNote();
-  @override
-  Widget build(BuildContext context) => _Panel(
-    child: Center(
-      child: Text(
-        'Schüler für eine Bemerkung auswählen.',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: DaymarkColors.muted),
-      ),
-    ),
-  );
-}
-
 class _Panel extends StatelessWidget {
-  const _Panel({required this.child});
+  const _Panel({super.key, required this.child});
+
   final Widget child;
+
   @override
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
@@ -1174,10 +1290,12 @@ class _ContentEditor extends StatefulWidget {
     required this.lessonId,
     required this.onSaved,
   });
+
   final _LessonDetailData data;
   final DaymarkStore store;
   final int lessonId;
   final VoidCallback onSaved;
+
   @override
   State<_ContentEditor> createState() => _ContentEditorState();
 }
@@ -1187,6 +1305,7 @@ class _ContentEditorState extends State<_ContentEditor> {
   late String _savedTopic = widget.data.topic;
   late String _savedSummary = widget.data.summary;
   late String _savedHomework = widget.data.homework;
+
   bool get dirty =>
       _topic.text != _savedTopic ||
       _summary.text != _savedSummary ||
@@ -1230,6 +1349,7 @@ class _ContentEditorState extends State<_ContentEditor> {
   late final TextEditingController _homework = TextEditingController(
     text: widget.data.homework,
   );
+
   @override
   void dispose() {
     _topic.dispose();
@@ -1335,14 +1455,14 @@ class _LessonDetailData {
     required this.summary,
     required this.homework,
     required this.students,
-    required this.notes,
   });
+
   final String className, subject, day, topic, summary, homework;
   final int period;
   final String? startTime;
   final bool completed;
   final List<_StudentAttendance> students;
-  final List<_LessonNote> notes;
+
   factory _LessonDetailData.fromRows(
     Map<String, Object?> lesson,
     List<Map<String, Object?>> attendance,
@@ -1359,22 +1479,19 @@ class _LessonDetailData {
     homework: lesson['homework'] as String? ?? '',
     students: [
       for (var index = 0; index < attendance.length; index++)
-        _StudentAttendance.fromRow(attendance[index], index + 1, lesson),
+        _StudentAttendance.fromRow(
+          attendance[index],
+          index + 1,
+          notes.any(
+            (note) => note['student_id'] == attendance[index]['student_id'],
+          ),
+        ),
     ],
-    notes: notes.map(_LessonNote.fromRow).toList(),
   );
-  List<_LessonNote> notesFor(int studentId) =>
-      notes.where((note) => note.studentId == studentId).toList();
-
-  _LessonNote? latestNoteFor(int studentId) {
-    for (final note in notes) {
-      if (note.studentId == studentId) return note;
-    }
-    return null;
-  }
 
   _StudentAttendance student(int id) =>
       students.firstWhere((student) => student.studentId == id);
+
   String get attendanceSummary {
     final present = students.where((s) => s.status == 'present').length;
     final absent = students.where((s) => s.status == 'absent').length;
@@ -1389,21 +1506,23 @@ class _StudentAttendance {
     required this.number,
     required this.name,
     required this.status,
-    required this.lessonLabel,
+    required this.hasNote,
   });
+
   final int studentId, number;
-  final String name, status, lessonLabel;
+  final String name, status;
+  final bool hasNote;
+
   factory _StudentAttendance.fromRow(
     Map<String, Object?> row,
     int number,
-    Map<String, Object?> lesson,
+    bool hasNote,
   ) => _StudentAttendance(
     studentId: row['student_id'] as int,
     number: number,
     name: '${row['last_name']}, ${row['first_name']}',
     status: row['status'] as String,
-    lessonLabel:
-        '${lesson['class_name']} · ${lesson['subject']} · ${lesson['period']}. Stunde',
+    hasNote: hasNote,
   );
 }
 
@@ -1413,8 +1532,10 @@ class _LessonNote {
     required this.studentId,
     required this.body,
   });
+
   final int id, studentId;
   final String body;
+
   factory _LessonNote.fromRow(Map<String, Object?> row) => _LessonNote(
     id: row['id'] as int,
     studentId: row['student_id'] as int,

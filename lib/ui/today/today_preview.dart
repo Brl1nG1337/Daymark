@@ -9,7 +9,7 @@ import 'today_view.dart';
 void _ignore() {}
 void _ignoreLesson(TodayLesson lesson) {}
 
-@Preview(name: 'Heute · Desktop', size: Size(1586, 992))
+@Preview(name: 'Unterricht · Desktop', size: Size(1586, 992))
 Widget todayDesktopPreview() {
   final date = DateTime(2026, 5, 12);
   const subjects = [
@@ -66,7 +66,7 @@ Widget todayDesktopPreview() {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Vor- & Nachbereitung',
+                        'Tagesnotizen',
                         style: TextStyle(
                           fontSize: 26,
                           fontWeight: FontWeight.w700,

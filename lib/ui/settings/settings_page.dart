@@ -28,6 +28,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   String? _selectedTheme;
+  bool _savingTheme = false;
   static const _defaultTimes = [
     '08:00',
     '08:55',
@@ -387,6 +388,77 @@ class _SettingsPageState extends State<SettingsPage> {
     ),
   );
 
+  Widget _toggleRow(
+    String title,
+    IconData icon, {
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required String subtitle,
+  }) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: _savingTheme ? null : () => onChanged(!value),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 70),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: DaymarkColors.border)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 30, color: DaymarkColors.ink),
+            const SizedBox(width: 22),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(color: DaymarkColors.ink, fontSize: 19),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(color: DaymarkColors.muted, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              key: const ValueKey('theme-toggle'),
+              value: value,
+              onChanged: _savingTheme ? null : onChanged,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _setDarkTheme(bool dark, {required bool previousDark}) async {
+    final previous = previousDark ? 'dark' : 'light';
+    final value = dark ? 'dark' : 'light';
+    setState(() {
+      _selectedTheme = value;
+      _savingTheme = true;
+    });
+    widget.onThemeChanged(dark ? ThemeMode.dark : ThemeMode.light);
+    try {
+      await widget.store.setSetting('theme', value);
+      if (mounted) setState(() => _savingTheme = false);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _selectedTheme = previous;
+        _savingTheme = false;
+      });
+      widget.onThemeChanged(
+        previous == 'dark' ? ThemeMode.dark : ThemeMode.light,
+      );
+      _error(error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<Map<String, String>>(
     future: _settings,
@@ -414,6 +486,7 @@ class _SettingsPageState extends State<SettingsPage> {
       final startLabel = parsedStart == null
           ? start
           : formatGermanLongDate(parsedStart);
+      final darkTheme = (_selectedTheme ?? settings['theme']) == 'dark';
       final calendar = _panel(
         'Schuljahr & Kalender',
         'Verwalte dein Schuljahr und wichtige Termine.',
@@ -482,35 +555,12 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        _row(
+        _toggleRow(
           'Design',
           Icons.light_mode_outlined,
-          () => _popup(
-            'Design',
-            DropdownButton<String>(
-              value: _selectedTheme ?? settings['theme'] ?? 'light',
-              items: const [
-                DropdownMenuItem(value: 'light', child: Text('Hell')),
-                DropdownMenuItem(value: 'dark', child: Text('Dunkel')),
-              ],
-              onChanged: (value) async {
-                if (value == null) return;
-                try {
-                  await widget.store.setSetting('theme', value);
-                  if (!mounted) return;
-                  setState(() => _selectedTheme = value);
-                  widget.onThemeChanged(
-                    value == 'dark' ? ThemeMode.dark : ThemeMode.light,
-                  );
-                } catch (error) {
-                  if (mounted) _error(error);
-                }
-              },
-            ),
-          ),
-          subtitle: (_selectedTheme ?? settings['theme']) == 'dark'
-              ? 'Dunkel'
-              : 'Hell',
+          value: darkTheme,
+          onChanged: (dark) => _setDarkTheme(dark, previousDark: darkTheme),
+          subtitle: darkTheme ? 'Dunkel' : 'Hell',
         ),
       ]);
       final teaching = _panel(

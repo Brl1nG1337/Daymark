@@ -59,3 +59,8 @@ Code formatiert, Analyse ohne Befunde, relevante Tests bestanden,
 Mockup visuell verglichen und Dokumentation aktualisiert. Im Abschlussbericht
 Änderungen, Prüfungen und verbleibende Einschränkungen nennen. Ein bestandener
 Analyzer allein belegt weder korrektes Verhalten noch visuelle Übereinstimmung.
+
+Der schmale Mockup-Test für 700 × 700 Pixel prüft die kompakte
+Datumssteuerung; der frühere 64-Pixel-RenderFlex-Overflow ist behoben. Die
+Theme- und Sidebar-Tests sowie die übrigen Tests laufen durch; die
+Farbumstellung verändert keine Layoutgrenzen.

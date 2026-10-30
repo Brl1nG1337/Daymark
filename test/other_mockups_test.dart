@@ -56,9 +56,7 @@ void main() {
     });
   }
 
-  testWidgets('timetable uses stable subject colors for visual grouping', (
-    tester,
-  ) async {
+  testWidgets('timetable keeps subject cards neutral', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -85,7 +83,7 @@ void main() {
       find.byKey(const ValueKey('planning-slot-3-1')),
     );
     expect(englishMonday.color, englishTuesday.color);
-    expect(englishMonday.color, isNot(germanWednesday.color));
+    expect(englishMonday.color, germanWednesday.color);
     expect(tester.takeException(), isNull);
   });
 
@@ -177,10 +175,14 @@ void main() {
     expect(find.text('Schüler (0)'), findsOneWidget);
     await tester.tap(find.text('Schüler hinzufügen'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, 'Max');
-    await tester.tap(find.text('Speichern'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, 'Muster');
+    await tester.enterText(
+      find.byKey(const ValueKey('student-first-name')),
+      'Max',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('student-last-name')),
+      'Muster',
+    );
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
     expect(find.text('Muster, Max'), findsOneWidget);
@@ -219,6 +221,57 @@ void main() {
     expect(find.text('Unterrichtszeiten bearbeiten'), findsNothing);
     expect(find.text('Unterrichtszeiten gespeichert.'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('edits first and last name in one student dialog', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = await DaymarkStore.inMemory();
+    addTearDown(store.close);
+    await store.addClass('8b');
+    await store.addStudent(1, 'Max', 'Muster');
+
+    await tester.pumpWidget(MaterialApp(home: DaymarkApp(store: store)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Klassen').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Muster, Max'));
+    await tester.pumpAndSettle();
+    final nameRect = tester.getRect(
+      find.byKey(const ValueKey('student-detail-name')),
+    );
+    final editRect = tester.getRect(
+      find.byKey(const ValueKey('edit-student-button')),
+    );
+    expect(editRect.left, greaterThan(nameRect.right));
+    expect(editRect.center.dy, closeTo(nameRect.center.dy, 1));
+    await tester.tap(find.text('Schüler bearbeiten'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Schüler bearbeiten'), findsWidgets);
+    expect(find.byKey(const ValueKey('student-first-name')), findsOneWidget);
+    expect(find.byKey(const ValueKey('student-last-name')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('student-first-name')),
+      'Mara',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('student-last-name')),
+      'Beispiel',
+    );
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Beispiel, Mara'), findsOneWidget);
+    final student = (await store.students(1, dayKey(DateTime.now()))).single;
+    expect(student['first_name'], 'Mara');
+    expect(student['last_name'], 'Beispiel');
+    expect(find.text('Vorname'), findsNothing);
+    expect(find.text('Nachname'), findsNothing);
   });
   testWidgets('school free days live in settings', (tester) async {
     final store = await DaymarkStore.inMemory();
@@ -310,11 +363,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Design'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Design'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButton<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dunkel').last);
+    final toggle = find.byKey(const ValueKey('theme-toggle'));
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.widget<Switch>(toggle).value, isFalse);
+    await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(await store.setting('theme'), 'dark');
     expect(mode, ThemeMode.dark);
@@ -322,9 +374,9 @@ void main() {
       Theme.of(tester.element(find.text('Design').first)).brightness,
       Brightness.dark,
     );
-    await tester.tap(find.byType(DropdownButton<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Hell').last);
+    expect(tester.widget<Switch>(toggle).value, isTrue);
+    expect(find.byType(AlertDialog), findsNothing);
+    await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(mode, ThemeMode.light);
     expect(
@@ -332,6 +384,7 @@ void main() {
       Brightness.light,
     );
     expect(await store.setting('theme'), 'light');
+    expect(tester.widget<Switch>(toggle).value, isFalse);
   });
 
   test('dark palette keeps readable surface contrast', () {

@@ -130,20 +130,32 @@ class _ClassesPageState extends State<ClassesPage> {
   }
 
   Future<void> _addStudent(_ClassItem item) async {
-    final first = await _ask('Vorname', '');
-    if (first == null || !mounted) return;
-    final last = await _ask('Nachname', '');
-    if (last != null) {
-      await _run(() => widget.store.addStudent(item.id, first, last));
+    final name = await showDialog<_StudentName>(
+      context: context,
+      builder: (context) => const _StudentNameDialog(
+        title: 'Schüler hinzufügen',
+        initialFirst: '',
+        initialLast: '',
+      ),
+    );
+    if (name != null) {
+      await _run(() => widget.store.addStudent(item.id, name.first, name.last));
     }
   }
 
   Future<void> _renameStudent(_Student student) async {
-    final first = await _ask('Vorname', student.first);
-    if (first == null || !mounted) return;
-    final last = await _ask('Nachname', student.last);
-    if (last != null) {
-      await _run(() => widget.store.renameStudent(student.id, first, last));
+    final name = await showDialog<_StudentName>(
+      context: context,
+      builder: (context) => _StudentNameDialog(
+        title: 'Schüler bearbeiten',
+        initialFirst: student.first,
+        initialLast: student.last,
+      ),
+    );
+    if (name != null) {
+      await _run(
+        () => widget.store.renameStudent(student.id, name.first, name.last),
+      );
     }
   }
 
@@ -185,36 +197,67 @@ class _ClassesPageState extends State<ClassesPage> {
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
-            Row(
-              children: [
-                const Text(
-                  'Klassen',
-                  style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 28),
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Schüler suchen',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) => setState(() {
-                      _search = value;
-                      _searchResultsFuture = value.trim().isEmpty
-                          ? null
-                          : _searchAll(value.trim());
-                    }),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 820;
+                final search = TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Schüler suchen',
+                    border: OutlineInputBorder(),
                   ),
-                ),
-                const SizedBox(width: 20),
-                FilledButton.icon(
+                  onChanged: (value) => setState(() {
+                    _search = value;
+                    _searchResultsFuture = value.trim().isEmpty
+                        ? null
+                        : _searchAll(value.trim());
+                  }),
+                );
+                final addClass = FilledButton.icon(
                   onPressed: _addClass,
-                  icon: Icon(Icons.add),
+                  icon: const Icon(Icons.add),
                   label: const Text('Klasse'),
-                ),
-              ],
+                );
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Klassen',
+                              style: TextStyle(
+                                fontSize: 34,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          addClass,
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      search,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    const Text(
+                      'Klassen',
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 28),
+                    Expanded(child: search),
+                    const SizedBox(width: 20),
+                    addClass,
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 20),
             SizedBox(
@@ -310,7 +353,7 @@ class _ClassesPageState extends State<ClassesPage> {
                 ),
                 Text(
                   'Schuljahr $_schoolYear/${(_schoolYear + 1).toString().substring(2)}',
-                  style: TextStyle(color: DaymarkColors.muted),
+                  style: TextStyle(color: DaymarkColors.muted, fontSize: 17),
                 ),
               ],
             ),
@@ -367,30 +410,43 @@ class _ClassesPageState extends State<ClassesPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Schüler (${snapshot.data!.students.length})',
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  FilledButton.icon(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final addStudent = FilledButton.icon(
                     onPressed: () => _addStudent(item),
                     icon: const Icon(Icons.person_add_alt_1_outlined),
                     label: const Text('Schüler hinzufügen'),
-                  ),
-                ],
+                  );
+                  final title = Text(
+                    'Schüler (${snapshot.data!.students.length})',
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                  return constraints.maxWidth < 620
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            title,
+                            const SizedBox(height: 10),
+                            addStudent,
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(child: title),
+                            addStudent,
+                          ],
+                        );
+                },
               ),
               const Divider(height: 25),
               LayoutBuilder(
                 builder: (context, constraints) => constraints.maxWidth < 740
                     ? const SizedBox.shrink()
                     : SizedBox(
-                        height: 42,
+                        height: 48,
                         child: _RosterColumns(
                           name: _sortButton(
                             'Name',
@@ -430,9 +486,11 @@ class _ClassesPageState extends State<ClassesPage> {
                                 ? ListTile(
                                     title: Text(
                                       '${student.last}, ${student.first}',
+                                      style: const TextStyle(fontSize: 18),
                                     ),
                                     subtitle: Text(
                                       '${roster.absences[student.id] ?? 0} Fehlstunden · ${roster.lates[student.id] ?? 0} verspätet',
+                                      style: const TextStyle(fontSize: 16),
                                     ),
                                     trailing: const Icon(Icons.chevron_right),
                                     onTap: () =>
@@ -442,7 +500,7 @@ class _ClassesPageState extends State<ClassesPage> {
                                     onTap: () =>
                                         setState(() => _studentId = student.id),
                                     child: Container(
-                                      height: 48,
+                                      height: 60,
                                       decoration: BoxDecoration(
                                         border: Border(
                                           bottom: BorderSide(
@@ -457,6 +515,9 @@ class _ClassesPageState extends State<ClassesPage> {
                                           ),
                                           child: Text(
                                             '${student.last}, ${student.first}',
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                            ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -464,6 +525,9 @@ class _ClassesPageState extends State<ClassesPage> {
                                         absences: Center(
                                           child: Text(
                                             '${roster.absences[student.id] ?? 0}',
+                                            style: const TextStyle(
+                                              fontSize: 17,
+                                            ),
                                             key: ValueKey(
                                               'roster-${student.id}-absences',
                                             ),
@@ -472,6 +536,9 @@ class _ClassesPageState extends State<ClassesPage> {
                                         lates: Center(
                                           child: Text(
                                             '${roster.lates[student.id] ?? 0}',
+                                            style: const TextStyle(
+                                              fontSize: 17,
+                                            ),
                                             key: ValueKey(
                                               'roster-${student.id}-lates',
                                             ),
@@ -486,6 +553,9 @@ class _ClassesPageState extends State<ClassesPage> {
                                                     roster.lastEntries[student
                                                         .id]!,
                                                   ),
+                                            style: const TextStyle(
+                                              fontSize: 17,
+                                            ),
                                             key: ValueKey(
                                               'roster-${student.id}-last-entry',
                                             ),
@@ -528,6 +598,7 @@ class _ClassesPageState extends State<ClassesPage> {
     }),
     child: Text(
       '$label ${_sort == sortKey ? (_descending ? '↓' : '↑') : ''}',
+      style: const TextStyle(fontSize: 16),
       overflow: TextOverflow.ellipsis,
     ),
   );
@@ -698,23 +769,32 @@ class _StudentDetailPageState extends State<_StudentDetailPage> {
               ),
             ],
           ),
-          Text(
-            '${data.student.last}, ${data.student.first}',
-            style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                '${data.student.last}, ${data.student.first}',
+                key: const ValueKey('student-detail-name'),
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+              ),
+              TextButton.icon(
+                key: const ValueKey('edit-student-button'),
+                onPressed: () async {
+                  await widget.onRename(data.student);
+                  if (mounted) {
+                    setState(() {
+                      _data = _load();
+                    });
+                  }
+                },
+                icon: Icon(Icons.edit_outlined),
+                label: const Text('Schüler bearbeiten'),
+              ),
+            ],
           ),
           Text('Klasse ${widget.classItem.name}'),
-          TextButton.icon(
-            onPressed: () async {
-              await widget.onRename(data.student);
-              if (mounted) {
-                setState(() {
-                  _data = _load();
-                });
-              }
-            },
-            icon: Icon(Icons.edit_outlined),
-            label: const Text('Schüler bearbeiten'),
-          ),
           const SizedBox(height: 18),
           Expanded(
             child: LayoutBuilder(
@@ -835,6 +915,90 @@ class _Card extends StatelessWidget {
   );
 }
 
+class _StudentNameDialog extends StatefulWidget {
+  const _StudentNameDialog({
+    required this.title,
+    required this.initialFirst,
+    required this.initialLast,
+  });
+
+  final String title;
+  final String initialFirst;
+  final String initialLast;
+
+  @override
+  State<_StudentNameDialog> createState() => _StudentNameDialogState();
+}
+
+class _StudentNameDialogState extends State<_StudentNameDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _firstController;
+  late final TextEditingController _lastController;
+
+  @override
+  void initState() {
+    super.initState();
+    _firstController = TextEditingController(text: widget.initialFirst);
+    _lastController = TextEditingController(text: widget.initialLast);
+  }
+
+  @override
+  void dispose() {
+    _firstController.dispose();
+    _lastController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_formKey.currentState?.validate() != true) return;
+    Navigator.pop(
+      context,
+      _StudentName(_firstController.text.trim(), _lastController.text.trim()),
+    );
+  }
+
+  String? _requiredName(String? value, String label) =>
+      value?.trim().isEmpty ?? true ? '$label erforderlich.' : null;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextFormField(
+            key: const ValueKey('student-first-name'),
+            controller: _firstController,
+            autofocus: true,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(labelText: 'Vorname'),
+            validator: (value) => _requiredName(value, 'Vorname'),
+            onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            key: const ValueKey('student-last-name'),
+            controller: _lastController,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(labelText: 'Nachname'),
+            validator: (value) => _requiredName(value, 'Nachname'),
+            onFieldSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Abbrechen'),
+      ),
+      FilledButton(onPressed: _submit, child: const Text('Speichern')),
+    ],
+  );
+}
+
 class _RosterColumns extends StatelessWidget {
   const _RosterColumns({
     required this.name,
@@ -872,6 +1036,12 @@ class _Student {
   const _Student(this.id, this.first, this.last);
   final int id;
   final String first, last;
+}
+
+class _StudentName {
+  const _StudentName(this.first, this.last);
+  final String first;
+  final String last;
 }
 
 class _Roster {

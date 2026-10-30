@@ -28,7 +28,7 @@ void main() {
     expect((await store.lesson(1))['topic'], 'Brüche');
     expect(
       (await store.rows('SELECT version FROM app_meta')).single['version'],
-      4,
+      6,
     );
   });
 
@@ -81,6 +81,30 @@ void main() {
       },
     );
 
+    test('preparation is stored before start and survives undo', () async {
+      final monday = DateTime(2026, 11, 2);
+      final slot = (await store.weekEntries(monday)).single;
+      await store.saveLessonPreparation(
+        slot['id'] as int,
+        '2026-11-02',
+        'Arbeitsblätter kopieren',
+      );
+
+      expect((await store.weekEntries(monday)).single['lesson_id'], isNull);
+      expect(
+        (await store.lessonPreparation(1, '2026-11-02'))?['body'],
+        'Arbeitsblätter kopieren',
+      );
+
+      final lessonId = await store.openLesson(slot, '2026-11-02');
+      await store.undoLessonStart(lessonId);
+
+      expect(
+        (await store.lessonPreparation(1, '2026-11-02'))?['body'],
+        'Arbeitsblätter kopieren',
+      );
+    });
+
     test('starting a lesson can be undone with its dependent data', () async {
       final monday = DateTime(2026, 11, 2);
       final slot = (await store.weekEntries(monday)).single;
@@ -98,6 +122,31 @@ void main() {
         await store.rows('SELECT * FROM lessons WHERE id=?', [id]),
         isEmpty,
       );
+    });
+
+    test('a student has at most one note per lesson', () async {
+      final monday = DateTime(2026, 11, 2);
+      final slot = (await store.weekEntries(monday)).single;
+      final lessonId = await store.openLesson(slot, '2026-11-02');
+
+      final firstId = await store.saveStudentLessonNote(
+        lessonId,
+        1,
+        'Erste Fassung',
+      );
+      final updatedId = await store.saveStudentLessonNote(
+        lessonId,
+        1,
+        'Überarbeitete Fassung',
+      );
+
+      final notes = await store.notes(lessonId);
+      expect(updatedId, firstId);
+      expect(notes, hasLength(1));
+      expect(notes.single['body'], 'Überarbeitete Fassung');
+
+      expect(await store.saveStudentLessonNote(lessonId, 1, '  '), isNull);
+      expect(await store.notes(lessonId), isEmpty);
     });
 
     test('an already completed lesson cannot be reset', () async {

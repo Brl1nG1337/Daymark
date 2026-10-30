@@ -836,7 +836,7 @@ class _ClassBadge extends StatelessWidget {
     constraints: const BoxConstraints(maxWidth: 170),
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
-      color: accent.color.withValues(alpha: DaymarkColors.dark ? .18 : .12),
+      color: DaymarkColors.activeSurface,
       borderRadius: BorderRadius.circular(999),
     ),
     child: Text(
@@ -881,37 +881,15 @@ class _SubjectAccent {
 }
 
 _SubjectAccent _accentForSubject(String subject) {
-  const lightColors = <Color>[
-    Color(0xff2563eb),
-    Color(0xff7c3aed),
-    Color(0xffc2410c),
-    Color(0xff0f766e),
-    Color(0xffbe185d),
-    Color(0xff4d7c0f),
-    Color(0xff0369a1),
-    Color(0xffa16207),
-  ];
-  const darkColors = <Color>[
-    Color(0xff60a5fa),
-    Color(0xffa78bfa),
-    Color(0xfffb923c),
-    Color(0xff2dd4bf),
-    Color(0xfff472b6),
-    Color(0xffa3e635),
-    Color(0xff38bdf8),
-    Color(0xfffacc15),
-  ];
+  final colors = DaymarkColors.subjectAccents;
   final normalized = subject.trim().toLowerCase();
   final colorIndex =
-      normalized.runes.fold<int>(0, (sum, rune) => sum + rune) %
-      lightColors.length;
-  final color = (DaymarkColors.dark ? darkColors : lightColors)[colorIndex];
+      normalized.runes.fold<int>(0, (sum, rune) => sum + rune) % colors.length;
+  final color = colors[colorIndex];
   return _SubjectAccent(
     color: color,
-    surface: color.withValues(alpha: DaymarkColors.dark ? .14 : .08),
-    foreground: DaymarkColors.dark
-        ? color
-        : Color.lerp(color, Colors.black, .2)!,
+    surface: DaymarkColors.surface,
+    foreground: DaymarkColors.primary,
   );
 }
 

@@ -77,6 +77,7 @@ class DaymarkStore {
       'CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, lesson_id INTEGER NOT NULL REFERENCES lessons(id), student_id INTEGER NOT NULL REFERENCES students(id), body TEXT NOT NULL, created_at TEXT NOT NULL)',
       'CREATE TABLE IF NOT EXISTS day_notes (id INTEGER PRIMARY KEY, day TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL)',
       'CREATE INDEX IF NOT EXISTS idx_day_notes_day ON day_notes(day, created_at)',
+      'CREATE TABLE IF NOT EXISTS lesson_preparations (slot_id INTEGER NOT NULL REFERENCES slots(id), day TEXT NOT NULL, body TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(slot_id, day))',
       'CREATE INDEX IF NOT EXISTS idx_lessons_day ON lessons(day)',
       'CREATE INDEX IF NOT EXISTS idx_notes_student ON notes(student_id)',
       'CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
@@ -91,7 +92,26 @@ class DaymarkStore {
         await db.customStatement('ALTER TABLE lessons ADD COLUMN $column TEXT');
       }
     }
-    await db.customStatement('UPDATE app_meta SET version=4 WHERE id=1');
+    await db.transaction(() async {
+      await db.customStatement(
+        'UPDATE notes SET body=('
+        'SELECT GROUP_CONCAT(body, char(10) || char(10)) FROM ('
+        'SELECT duplicate.body FROM notes duplicate '
+        'WHERE duplicate.lesson_id=notes.lesson_id '
+        'AND duplicate.student_id=notes.student_id '
+        'ORDER BY duplicate.created_at,duplicate.id)) '
+        'WHERE id IN (SELECT MAX(id) FROM notes GROUP BY lesson_id,student_id)',
+      );
+      await db.customStatement(
+        'DELETE FROM notes WHERE id NOT IN ('
+        'SELECT MAX(id) FROM notes GROUP BY lesson_id,student_id)',
+      );
+      await db.customStatement(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_lesson_student '
+        'ON notes(lesson_id,student_id)',
+      );
+      await db.customStatement('UPDATE app_meta SET version=6 WHERE id=1');
+    });
   }
 
   Future<List<Map<String, Object?>>> rows(
@@ -120,6 +140,37 @@ class DaymarkStore {
   );
   Future<void> deleteDayNote(int id) =>
       db.customStatement('DELETE FROM day_notes WHERE id=?', [id]);
+  Future<Map<String, Object?>?> lessonPreparation(
+    int slotId,
+    String day,
+  ) async {
+    final result = await rows(
+      'SELECT slot_id, day, body, updated_at FROM lesson_preparations WHERE slot_id=? AND day=?',
+      [slotId, day],
+    );
+    return result.firstOrNull;
+  }
+
+  Future<void> saveLessonPreparation(
+    int slotId,
+    String day,
+    String body,
+  ) async {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) {
+      await db.customStatement(
+        'DELETE FROM lesson_preparations WHERE slot_id=? AND day=?',
+        [slotId, day],
+      );
+      return;
+    }
+    await db.customStatement(
+      'INSERT INTO lesson_preparations(slot_id,day,body,updated_at) VALUES (?,?,?,?) '
+      'ON CONFLICT(slot_id,day) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at',
+      [slotId, day, trimmed, DateTime.now().toUtc().toIso8601String()],
+    );
+  }
+
   Future<void> addStudent(int classId, String first, String last) async {
     await db.transaction(() async {
       await db.customStatement(
@@ -296,27 +347,46 @@ class DaymarkStore {
     });
   }
 
-  Future<void> addNote(
+  Future<void> addNote(int lessonId, int studentId, String body) async =>
+      saveStudentLessonNote(lessonId, studentId, body);
+
+  Future<int?> saveStudentLessonNote(
     int lessonId,
     int studentId,
     String body,
-  ) async => db.customStatement(
-    'INSERT INTO notes(lesson_id,student_id,body,created_at) VALUES (?,?,?,?)',
-    [lessonId, studentId, body.trim(), DateTime.now().toIso8601String()],
-  );
-  Future<void> updateNote(int id, String body) async => db.customStatement(
-    'UPDATE notes SET body=? WHERE id=?',
-    [body.trim(), id],
-  );
-  Future<void> deleteNote(int id) async =>
-      db.customStatement('DELETE FROM notes WHERE id=?', [id]);
+  ) async {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) {
+      await db.customStatement(
+        'DELETE FROM notes WHERE lesson_id=? AND student_id=?',
+        [lessonId, studentId],
+      );
+      return null;
+    }
+    await db.customStatement(
+      'INSERT INTO notes(lesson_id,student_id,body,created_at) VALUES (?,?,?,?) '
+      'ON CONFLICT(lesson_id,student_id) DO UPDATE SET body=excluded.body',
+      [lessonId, studentId, trimmed, DateTime.now().toIso8601String()],
+    );
+    final row = (await rows(
+      'SELECT id FROM notes WHERE lesson_id=? AND student_id=?',
+      [lessonId, studentId],
+    )).single;
+    return row['id'] as int;
+  }
+
+  Future<Map<String, Object?>?> studentLessonNote(
+    int lessonId,
+    int studentId,
+  ) async => (await rows(
+    'SELECT n.*,s.first_name,s.last_name FROM notes n '
+    'JOIN students s ON s.id=n.student_id '
+    'WHERE lesson_id=? AND student_id=?',
+    [lessonId, studentId],
+  )).firstOrNull;
   Future<List<Map<String, Object?>>> notes(int lessonId) => rows(
     'SELECT n.*,s.first_name,s.last_name FROM notes n JOIN students s ON s.id=n.student_id WHERE lesson_id=? ORDER BY created_at DESC',
     [lessonId],
-  );
-  Future<List<Map<String, Object?>>> history(int studentId) => rows(
-    'SELECT l.day,l.subject,l.period,a.status,(SELECT GROUP_CONCAT(body, \' · \') FROM notes n WHERE n.lesson_id=l.id AND n.student_id=a.student_id) body FROM lessons l JOIN attendance a ON a.lesson_id=l.id AND a.student_id=? WHERE l.completed=1 ORDER BY l.day DESC,l.period DESC',
-    [studentId],
   );
   Future<void> renameClass(int id, String name) => db.customStatement(
     'UPDATE classes SET name=? WHERE id=?',
@@ -487,7 +557,7 @@ class DaymarkStore {
       connection.select('SELECT version FROM app_meta LIMIT 1');
       final version =
           connection.select('PRAGMA user_version').single.values.single as int;
-      if (version < 1 || version > 4) {
+      if (version < 1 || version > 6) {
         throw const FormatException('Nicht unterstützte Backup-Version.');
       }
     } on sqlite.SqliteException {
@@ -572,11 +642,11 @@ class DaymarkStore {
 class DaymarkDatabase extends GeneratedDatabase {
   DaymarkDatabase(super.executor);
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 6;
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (migrator, from, to) async {
-      if (from < 1 || from > 3 || to != 4) {
+      if (from < 1 || from > 5 || to != 6) {
         throw StateError('Nicht unterstützte Datenbankmigration: $from → $to');
       }
       // Drift checks user_version before the store can initialize its SQL schema.

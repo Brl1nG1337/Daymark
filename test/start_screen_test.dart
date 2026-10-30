@@ -41,19 +41,83 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Geplante Stunde'), findsOneWidget);
     expect(find.text('Stunde starten'), findsOneWidget);
+    expect(find.text('Begonnen'), findsNothing);
+    expect(find.text('Vorbereitungsnotizen'), findsOneWidget);
     expect(find.text('Klasse auswählen.'), findsNothing);
+    await tester.enterText(
+      find.byKey(const ValueKey('lesson-preparation-notes')),
+      'Bruchstreifen und Arbeitsblätter bereitlegen',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('lesson-preparation-notes')),
+          )
+          .controller
+          ?.text,
+      'Bruchstreifen und Arbeitsblätter bereitlegen',
+    );
+    final saveButton = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('Vorbereitung speichern'),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(saveButton.onPressed, isNotNull);
+    await tester.tap(find.text('Vorbereitung speichern'));
+    await tester.pumpAndSettle();
+    expect(
+      (await store.lessonPreparation(1, dayKey(monday)))?['body'],
+      'Bruchstreifen und Arbeitsblätter bereitlegen',
+    );
     await tester.tap(find.text('Stunde starten'));
     await tester.pumpAndSettle();
     expect(find.text('Stunde abschließen'), findsOneWidget);
+    expect(find.text('Begonnen'), findsOneWidget);
+    await tester.tap(find.text('Vorbereitung'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Bruchstreifen und Arbeitsblätter bereitlegen'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Anwesenheit'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('attendance-1-absent')));
     await tester.pumpAndSettle();
     expect((await store.attendance(1)).single['status'], 'absent');
-    await tester.tap(find.text('Muster, Erika'));
+    expect(find.text('Schülerhistorie'), findsNothing);
+    expect(find.byTooltip('Bemerkung öffnen'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('add-student-note-1')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, 'Gut mitgearbeitet');
-    await tester.tap(find.text('Bemerkung speichern'));
+    await tester.pump(const Duration(milliseconds: 650));
     await tester.pumpAndSettle();
-    expect((await store.notes(1)).single['body'], 'Gut mitgearbeitet');
+    final firstNote = (await store.notes(1)).single;
+    expect(firstNote['body'], 'Gut mitgearbeitet');
+    expect(find.text('Bemerkung speichern'), findsNothing);
+    expect(find.text('Gespeichert'), findsOneWidget);
+    expect(find.byIcon(Icons.sticky_note_2), findsOneWidget);
+    expect(find.byTooltip('Anwesend'), findsOneWidget);
+    expect(find.text('3a · Mathe · 2. Stunde'), findsNothing);
+    await tester.tap(find.byTooltip('Bemerkung schließen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-student-note-1')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller?.text,
+      'Gut mitgearbeitet',
+    );
+    await tester.enterText(
+      find.byType(TextField).last,
+      'Gut mitgearbeitet und Material vollständig',
+    );
+    await tester.pump(const Duration(milliseconds: 650));
+    await tester.pumpAndSettle();
+    final notes = await store.notes(1);
+    expect(notes, hasLength(1));
+    expect(notes.single['id'], firstNote['id']);
+    expect(notes.single['body'], 'Gut mitgearbeitet und Material vollständig');
     await tester.tap(find.text('Bemerkung löschen'));
     await tester.pumpAndSettle();
     expect(await store.notes(1), isEmpty);
@@ -115,7 +179,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Anwesenheit'), findsWidgets);
-    await tester.tap(find.text('Muster, Erika'));
+    expect(find.text('Schüler für eine Bemerkung auswählen.'), findsNothing);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('lesson-detail-tabs'))).width,
+      620,
+    );
+    final tabsBottom = tester
+        .getBottomLeft(find.byKey(const ValueKey('lesson-detail-tabs')))
+        .dy;
+    final attendanceTop = tester
+        .getTopLeft(find.byKey(const ValueKey('lesson-attendance-card')))
+        .dy;
+    expect(attendanceTop - tabsBottom, 22);
+    await tester.tap(find.byKey(const ValueKey('add-student-note-1')));
     await tester.pumpAndSettle();
     expect(
       find.byTooltip('Bemerkung schließen', skipOffstage: false),
@@ -132,7 +208,8 @@ void main() {
     );
     outer.position.jumpTo(outer.position.maxScrollExtent);
     await tester.pumpAndSettle();
-    expect(find.text('Bemerkung speichern'), findsOneWidget);
+    expect(find.text('Bemerkung speichern'), findsNothing);
+    expect(find.text('Wird automatisch gespeichert'), findsOneWidget);
   });
 
   testWidgets('a started lesson can be reset from the detail header', (
@@ -153,6 +230,11 @@ void main() {
     await store.addSlot(1, 'Mathe', 1, 2, '09:00', '2026-01-01');
     final slot = (await store.slots()).single;
     final id = await store.openLesson(slot, dayKey(monday));
+    await store.saveLessonPreparation(
+      slot['id'] as int,
+      dayKey(monday),
+      'Vorbereitung bleibt bestehen',
+    );
 
     await tester.pumpWidget(
       MaterialApp(
@@ -185,5 +267,6 @@ void main() {
     expect(find.text('Geplante Stunde'), findsOneWidget);
     expect(find.text('Stunde starten'), findsOneWidget);
     expect((await store.weekEntries(monday)).single['lesson_id'], isNull);
+    expect(find.text('Vorbereitung bleibt bestehen'), findsOneWidget);
   });
 }

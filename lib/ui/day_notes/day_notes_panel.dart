@@ -128,7 +128,7 @@ class _DayNotesPanelState extends State<DayNotesPanel> {
             children: [
               const Expanded(
                 child: Text(
-                  'Vor- & Nachbereitung',
+                  'Tagesnotizen',
                   style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
                 ),
               ),

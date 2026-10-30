@@ -185,10 +185,14 @@ class _SelectedDatePanel extends StatelessWidget {
   Widget _calendarIcon({required double size}) => Container(
     padding: const EdgeInsets.all(10),
     decoration: BoxDecoration(
-      color: const Color(0x1fffffff),
+      color: DaymarkColors.onSidebar.withValues(alpha: .12),
       borderRadius: BorderRadius.circular(10),
     ),
-    child: Icon(Icons.calendar_month_outlined, color: Colors.white, size: size),
+    child: Icon(
+      Icons.calendar_month_outlined,
+      color: DaymarkColors.onSidebar,
+      size: size,
+    ),
   );
 
   Widget _dateText({required bool compact}) => Column(
@@ -198,7 +202,7 @@ class _SelectedDatePanel extends StatelessWidget {
       Text(
         formatGermanLongDate(date),
         style: TextStyle(
-          color: Colors.white,
+          color: DaymarkColors.onSidebar,
           fontSize: compact ? 20 : 28,
           height: 1.25,
           fontWeight: FontWeight.w700,
@@ -208,7 +212,7 @@ class _SelectedDatePanel extends StatelessWidget {
       Text(
         formatGermanDate(date),
         style: TextStyle(
-          color: const Color(0xffc7d8e8),
+          color: DaymarkColors.sidebarIcon,
           fontSize: compact ? 16 : 18,
           fontWeight: FontWeight.w600,
         ),

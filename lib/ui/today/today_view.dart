@@ -40,47 +40,46 @@ class TodayView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              const Padding(
-                padding: EdgeInsets.only(right: 30),
-                child: Text(
-                  'Heute',
-                  style: TextStyle(fontSize: 34, fontWeight: FontWeight.w700),
-                ),
-              ),
-              _dateArrow('Voriger Tag', Icons.chevron_left, onPrevious),
-              OutlinedButton(
-                onPressed: onPickDate,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        germanDayLabel(date),
-                        style: TextStyle(
-                          color: DaymarkColors.ink,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 650;
+              return Wrap(
+                spacing: compact ? 8 : 10,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _dateArrow('Voriger Tag', Icons.chevron_left, onPrevious),
+                  OutlinedButton(
+                    onPressed: onPickDate,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            germanDayLabel(date),
+                            key: const ValueKey('selected-date-label'),
+                            style: TextStyle(
+                              color: DaymarkColors.ink,
+                              fontSize: compact ? 20 : 26,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(width: compact ? 12 : 28),
+                          const Icon(Icons.calendar_today_outlined, size: 22),
+                        ],
                       ),
-                      const SizedBox(width: 28),
-                      Icon(Icons.calendar_today_outlined, size: 22),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              _dateArrow('Nächster Tag', Icons.chevron_right, onNext),
-              const SizedBox(width: 2),
-              OutlinedButton(
-                onPressed: isToday ? null : onToday,
-                child: const Text('Heute', style: TextStyle(fontSize: 18)),
-              ),
-            ],
+                  _dateArrow('Nächster Tag', Icons.chevron_right, onNext),
+                  const SizedBox(width: 2),
+                  OutlinedButton(
+                    onPressed: isToday ? null : onToday,
+                    child: const Text('Heute', style: TextStyle(fontSize: 18)),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 26),
           Expanded(child: _body()),

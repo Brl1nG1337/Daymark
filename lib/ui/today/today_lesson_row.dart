@@ -75,7 +75,7 @@ class TodayLessonRow extends StatelessWidget {
                             child: Container(
                               width: 1,
                               color: current
-                                  ? const Color(0xffa6d6ff)
+                                  ? DaymarkColors.focus.withValues(alpha: .55)
                                   : DaymarkColors.border,
                             ),
                           ),

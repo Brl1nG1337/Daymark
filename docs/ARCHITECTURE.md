@@ -26,8 +26,14 @@ Arbeitsbereich des aktuellen Monitors als Maximum. Das Startfenster bleibt
   `desktop_date_picker_dialog.dart` kapselt die responsive, für Desktopfenster
   vergrößerte Datumsauswahl ohne Persistenzzugriff.
   `ui/day_notes/` besitzt den unabhängigen Lade- und Bearbeitungszustand der
-  Einträge zur Vor- und Nachbereitung für das ausgewählte Datum.
+  Tagesnotizen für das ausgewählte Datum. `ui/lesson_preparation/` kapselt
+  Modellzustand und Editor für die Vorbereitungsnotizen einer konkreten Stunde;
+  das typisierte Repository trennt die UI von den Datenbankzeilen.
   `DaymarkSidebar` und `theme/daymark_theme.dart` definieren den gemeinsamen Rahmen.
+  Das Theme trennt die feste Schul-Markenpalette von den semantischen Light- und
+  Dark-Tokens. Eine `ThemeExtension` stellt die Tokens zusätzlich über den
+  Widget-Kontext bereit; zentrale Material-Komponententhemes leiten daraus
+  Zustände, Formfelder, Dialoge, Navigation und Scrollbars ab.
   `ui/classes/`, `ui/planning/` und `ui/settings/` kapseln die weiteren
   Mockup-Screens. `ui/lesson_detail/lesson_detail_page.dart` kapselt den Stundendetail-Screen
   und wandelt die noch Map-basierten Store-Ergebnisse an seiner Grenze in
@@ -41,7 +47,7 @@ SQL und Datenbank-Maps gehören nicht in neue Darstellungswidgets. Der App-Rahme
 
 ## Persistenz
 
-`DaymarkStore` verwendet Drift mit explizitem SQL, Schema-Version 4 und
+`DaymarkStore` verwendet Drift mit explizitem SQL, Schema-Version 6 und
 SQLite3MultipleCiphers. Das Passwort entsperrt die Datenbank im lokalen
 App-Support-Verzeichnis. Es gibt keine Passwortwiederherstellung.
 Schreibvorgänge mit mehreren zusammengehörigen Schritten sind transaktional.
@@ -54,8 +60,9 @@ kanonisch als `JJJJ-MM-TT` gespeichert. Die UI formatiert und validiert sie an
 der Schichtengrenze zentral als deutsches `TT.MM.JJJJ`; so ändern sich weder
 Sortierreihenfolge noch vorhandene Nutzerdaten.
 
-Migrationen von Drift-`user_version` 1, 2 und 3 auf 4 laufen transaktional.
-Fehlende Stundenfelder, die Einstellungstabelle und `day_notes` werden ergänzt; vorhandene
+Migrationen von Drift-`user_version` 1 bis 5 auf 6 laufen transaktional.
+Fehlende Stundenfelder, die Einstellungstabelle, `day_notes` und
+`lesson_preparations` werden ergänzt; vorhandene
 Inhalte bleiben erhalten. Dies gilt auch für ältere Dateien, deren
 `app_meta.version` bereits 2 meldet, während `user_version` noch 1 ist.
 Verschlüsselte Dateitests prüfen beide Ausgangszustände und erneutes Öffnen.
@@ -81,7 +88,10 @@ Texteingabedialog. `DaymarkStore` liefert für weitere Abfragen noch Maps; neue
 Feature-Grenzen wandeln sie in typisierte Präsentationsdaten um. Eine gemeinsame
 getypte Repository-Schicht für alle Features steht noch aus.
 
-Schema-Version 4 ergänzt `day_notes`; Version 3 ergänzte `app_settings`.
+Schema-Version 6 begrenzt Bemerkungen auf einen Eintrag je Stunde und Schüler
+und führt vorhandene Mehrfacheinträge ohne Inhaltsverlust zusammen. Version 5
+ergänzte `lesson_preparations`, Version 4 `day_notes` und Version 3
+`app_settings`.
 Bearbeitungen bereits verwendeter
 Stundenplanplätze legen eine neue gültige Version an, damit historische
 Stundenzeiten erhalten bleiben. Backup-Export kopiert
